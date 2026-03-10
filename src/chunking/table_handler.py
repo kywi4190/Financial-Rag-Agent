@@ -1,54 +1,93 @@
 """Financial table extraction and formatting.
 
-Detects tables in filing HTML, converts them to a structured markdown
-format suitable for embedding, and preserves numeric precision.
+Detects tables in filing HTML, converts them to structured markdown,
+and classifies whether a table contains financial data.
 """
 
-from src.chunking.models import DocumentChunk
-from src.ingestion.models import FilingMetadata
+import re
+
+from bs4 import BeautifulSoup
 
 
-class TableHandler:
-    """Extracts and formats financial tables from filing HTML."""
+def detect_tables(html_content: str) -> list[str]:
+    """Find all HTML tables in filing content.
 
-    def extract_tables(self, html: str) -> list[str]:
-        """Extract HTML tables from raw filing content.
+    Args:
+        html_content: Raw HTML content potentially containing tables.
 
-        Args:
-            html: Raw HTML content potentially containing tables.
+    Returns:
+        List of individual table HTML strings.
+    """
+    soup = BeautifulSoup(html_content, "html.parser")
+    return [str(table) for table in soup.find_all("table")]
 
-        Returns:
-            List of individual table HTML strings.
-        """
-        ...
 
-    def table_to_markdown(self, table_html: str) -> str:
-        """Convert an HTML table to clean markdown format.
+def html_table_to_markdown(html: str) -> str:
+    """Convert an HTML table to clean markdown format.
 
-        Args:
-            table_html: A single HTML table string.
+    Preserves exact numbers, column alignment, and row/column headers.
 
-        Returns:
-            Markdown-formatted table string.
-        """
-        ...
+    Args:
+        html: A single HTML table string.
 
-    def create_table_chunk(
-        self,
-        table_markdown: str,
-        metadata: FilingMetadata,
-        section_name: str,
-        chunk_index: int,
-    ) -> DocumentChunk:
-        """Create a DocumentChunk from a formatted table.
+    Returns:
+        Markdown-formatted table string.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    table = soup.find("table")
+    if not table:
+        return html.strip()
 
-        Args:
-            table_markdown: Markdown-formatted table content.
-            metadata: Source filing metadata.
-            section_name: Section the table was found in.
-            chunk_index: Position index for the chunk.
+    rows: list[list[str]] = []
+    for tr in table.find_all("tr"):
+        cells: list[str] = []
+        for cell in tr.find_all(["td", "th"]):
+            text = cell.get_text(strip=True)
+            text = re.sub(r"\s+", " ", text)
+            cells.append(text)
+        if cells:
+            rows.append(cells)
 
-        Returns:
-            A DocumentChunk with is_table=True in its metadata.
-        """
-        ...
+    if not rows:
+        return ""
+
+    max_cols = max(len(row) for row in rows)
+    for row in rows:
+        while len(row) < max_cols:
+            row.append("")
+
+    lines: list[str] = []
+    lines.append("| " + " | ".join(rows[0]) + " |")
+    lines.append("| " + " | ".join(["---"] * max_cols) + " |")
+    for row in rows[1:]:
+        lines.append("| " + " | ".join(row) + " |")
+
+    return "\n".join(lines)
+
+
+def is_financial_table(table_md: str) -> bool:
+    """Classify whether a markdown table contains financial data.
+
+    Uses heuristic pattern matching to distinguish financial data tables
+    (income statements, balance sheets, etc.) from decorative/navigation tables.
+
+    Args:
+        table_md: Markdown-formatted table string.
+
+    Returns:
+        True if the table appears to contain financial data.
+    """
+    financial_patterns = [
+        r"\$[\d,]+",
+        r"\d{1,3}(,\d{3})+",
+        r"revenue|income|loss|assets|liabilities|equity|earnings",
+        r"operating|net\s+income|gross\s+profit|total",
+        r"balance\s+sheet|cash\s+flow|statement",
+        r"\(\d[\d,]*\)",
+    ]
+
+    text_lower = table_md.lower()
+    matches = sum(
+        1 for pattern in financial_patterns if re.search(pattern, text_lower)
+    )
+    return matches >= 2
