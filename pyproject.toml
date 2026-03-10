@@ -12,6 +12,10 @@ readme = "README.md"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "integration: hits real SEC EDGAR API (deselect with '-m not integration')",
+    "slow: marks tests as slow-running",
+]
 
 [tool.ruff]
 line-length = 100

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd C:/dev/Financial-Rag-Agent && pip install -r requirements.txt 2>&1)",
+      "Bash(python -m pytest tests/test_ingestion.py --collect-only 2>&1 | head -60)"
+    ]
+  }
+}
