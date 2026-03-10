@@ -16,17 +16,35 @@ class SearchResult(BaseModel):
 
     Attributes:
         chunk_id: Unique identifier of the matched chunk.
-        text: Text content of the matched chunk.
+        content: Text content of the matched chunk.
         score: Relevance score (interpretation depends on source).
         metadata: Chunk metadata for attribution and filtering.
         source: Which retrieval stage produced this result.
     """
 
     chunk_id: str
-    text: str
+    content: str
     score: float
     metadata: ChunkMetadata
-    source: str = "unknown"
+    source: str = "dense"
+
+
+class RetrievalConfig(BaseModel):
+    """Configuration for the retrieval pipeline.
+
+    Attributes:
+        top_k: Number of candidates from each retrieval source.
+        rerank_top_k: Number of results after reranking.
+        dense_weight: Weight for dense vector search in hybrid fusion.
+        sparse_weight: Weight for sparse BM25 search in hybrid fusion.
+        filters: Optional metadata filters applied to search.
+    """
+
+    top_k: int = 20
+    rerank_top_k: int = 5
+    dense_weight: float = 0.7
+    sparse_weight: float = 0.3
+    filters: Optional[dict] = None
 
 
 class RetrievalResult(BaseModel):
