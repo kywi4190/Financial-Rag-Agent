@@ -105,23 +105,26 @@ class TestEdgarClient:
 
     # -- download_filing ----------------------------------------------------
 
-    @patch("src.ingestion.edgar_client.Company")
+    @patch("src.ingestion.edgar_client.edgar.get_by_accession_number")
     def test_download_filing_returns_html(
         self,
-        mock_company_cls: MagicMock,
+        mock_get_by_accession: MagicMock,
         sample_filing_metadata: FilingMetadata,
     ) -> None:
         """download_filing returns a non-empty HTML string."""
-        mock_company = MagicMock()
-        mock_company.get_filing.return_value.html.return_value = "<html>content</html>"
-        mock_company_cls.return_value = mock_company
+        mock_filing_obj = MagicMock()
+        mock_filing_obj.html.return_value = "<html><body>10-K content</body></html>"
+        mock_get_by_accession.return_value = mock_filing_obj
 
         client = EdgarClient(identity=self.IDENTITY)
         html = client.download_filing(sample_filing_metadata)
 
         assert isinstance(html, str)
         assert len(html) > 0
-        assert "<html>" in html.lower() or "item" in html.lower()
+        assert "<html>" in html.lower()
+        mock_get_by_accession.assert_called_once_with(
+            sample_filing_metadata.accession_number
+        )
 
     @patch("src.ingestion.edgar_client.Company")
     def test_get_filings_respects_num_filings(
@@ -442,14 +445,18 @@ class TestIntegration:
         assert meta.cik  # Non-empty CIK
         assert meta.accession_number  # Non-empty accession number
 
-        # Step 2: Download filing HTML
+        # Step 2: Download markdown (for sections) and HTML (for XBRL)
+        markdown = client.download_filing_markdown(meta)
+        assert isinstance(markdown, str)
+        assert len(markdown) > 1000
+
         html = client.download_filing(meta)
         assert isinstance(html, str)
         assert len(html) > 1000  # A real 10-K is large
 
-        # Step 3: Parse sections
+        # Step 3: Parse sections from markdown (matches ingest.py pipeline)
         parser = FilingParser()
-        sections = parser.parse_sections(html, meta)
+        sections = parser.parse_sections(markdown, meta)
         assert len(sections) >= 3  # At least a few standard sections
 
         section_names_lower = [s.section_name.lower() for s in sections]
@@ -461,7 +468,7 @@ class TestIntegration:
             assert isinstance(section, FilingSection)
             assert len(section.content) > 0
 
-        # Step 4: Extract XBRL facts
+        # Step 4: Extract XBRL facts from HTML
         facts = parser.extract_xbrl_facts(html, meta)
         assert isinstance(facts, list)
         # Real filings should have many XBRL facts
