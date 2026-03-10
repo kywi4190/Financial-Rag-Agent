@@ -6,7 +6,13 @@
       "Bash(python -m pytest tests/test_ingestion.py -v --timeout=30 -m \"not integration\" 2>&1)",
       "Bash(python -m pytest tests/test_ingestion.py -v -m \"not integration\" 2>&1)",
       "Bash(cd C:/dev/Financial-Rag-Agent && python scripts/ingest.py --ticker AAPL --years 2022,2023,2024 2>&1)",
-      "Bash(python -m pytest tests/test_ingestion.py -v --tb=short -x 2>&1 | head -80)"
+      "Bash(python -m pytest tests/test_ingestion.py -v --tb=short -x 2>&1 | head -80)",
+      "Bash(python -m pytest tests/test_retrieval.py -v 2>&1)",
+      "Bash(python -m pytest tests/ -v 2>&1)",
+      "Bash(git -C /c/dev/Financial-Rag-Agent status)",
+      "Bash(git -C /c/dev/Financial-Rag-Agent diff --stat)",
+      "Bash(git -C /c/dev/Financial-Rag-Agent log --oneline -5)",
+      "Bash(git -C /c/dev/Financial-Rag-Agent add src/retrieval/models.py src/retrieval/vector_store.py src/retrieval/bm25_search.py src/retrieval/hybrid.py src/retrieval/reranker.py tests/test_retrieval.py)"
     ]
   }
 }
