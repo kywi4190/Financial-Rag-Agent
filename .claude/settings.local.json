@@ -12,7 +12,8 @@
       "Bash(git -C /c/dev/Financial-Rag-Agent status)",
       "Bash(git -C /c/dev/Financial-Rag-Agent diff --stat)",
       "Bash(git -C /c/dev/Financial-Rag-Agent log --oneline -5)",
-      "Bash(git -C /c/dev/Financial-Rag-Agent add src/retrieval/models.py src/retrieval/vector_store.py src/retrieval/bm25_search.py src/retrieval/hybrid.py src/retrieval/reranker.py tests/test_retrieval.py)"
+      "Bash(git -C /c/dev/Financial-Rag-Agent add src/retrieval/models.py src/retrieval/vector_store.py src/retrieval/bm25_search.py src/retrieval/hybrid.py src/retrieval/reranker.py tests/test_retrieval.py)",
+      "Bash(git add:*)"
     ]
   }
 }
