@@ -14,9 +14,17 @@ import time
 from datetime import date
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from src.chunking.financial_chunker import FinancialChunker
 from src.ingestion.edgar_client import EdgarClient
 from src.ingestion.filing_parser import FilingParser
 from src.ingestion.models import FilingMetadata
+from src.retrieval.vector_store import ChromaStore
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,9 +71,11 @@ def ingest_ticker(
     years: list[int],
     output_dir: Path,
 ) -> None:
-    """Download, parse, and save filings for a single ticker."""
+    """Download, parse, chunk, and index filings for a single ticker."""
     client = EdgarClient(identity=IDENTITY)
     parser = FilingParser()
+    chunker = FinancialChunker()
+    vector_store = ChromaStore()
 
     ticker_dir = output_dir / ticker
     ticker_dir.mkdir(parents=True, exist_ok=True)
@@ -173,6 +183,12 @@ def ingest_ticker(
         out_path = ticker_dir / filename
         out_path.write_text(json.dumps(filing_data, indent=2, default=str), encoding="utf-8")
         logger.info("    Saved to %s", out_path)
+
+        # Chunk and index into ChromaDB
+        if sections:
+            chunks = chunker.chunk_filing(sections)
+            vector_store.add_chunks(chunks)
+            logger.info("    Indexed %d chunks into ChromaDB", len(chunks))
 
         # Respect SEC rate limit (10 req/sec)
         time.sleep(0.5)

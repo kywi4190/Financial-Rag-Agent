@@ -5,14 +5,35 @@ context, and generating investment memos.
 """
 
 import logging
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import streamlit as st
+
+# Bridge Streamlit Cloud secrets into environment variables so that
+# pydantic-settings (src/config.py) can pick them up transparently.
+if hasattr(st, "secrets"):
+    for key in ("OPENAI_API_KEY", "SEC_EDGAR_IDENTITY"):
+        if key in st.secrets and key not in os.environ:
+            os.environ[key] = st.secrets[key]
 
 from app.components.chat import render_chat_tab
 from app.components.memo import render_memo_tab
 from app.components.metrics import render_metrics_tab
 
 logger = logging.getLogger(__name__)
+
+
+def _check_api_keys() -> bool:
+    """Return True if required API keys are configured."""
+    return bool(os.environ.get("OPENAI_API_KEY"))
 
 
 @st.cache_resource
@@ -153,6 +174,22 @@ def main() -> None:
 
     st.title("Financial RAG Agent")
     st.caption("SEC filing analysis with agentic RAG")
+
+    # Gate on required API keys before initializing any backend
+    if not _check_api_keys():
+        st.error("**Missing API keys.** The app cannot start without them.")
+        st.markdown(
+            "**Local development:**\n"
+            "```bash\n"
+            "cp .env.example .env\n"
+            "# edit .env and fill in your OPENAI_API_KEY\n"
+            "```\n\n"
+            "**Streamlit Community Cloud:**\n"
+            "1. Open your app dashboard on [share.streamlit.io](https://share.streamlit.io)\n"
+            "2. Go to **Settings > Secrets**\n"
+            "3. Paste the contents of `.streamlit/secrets.toml.example` and fill in real values\n"
+        )
+        st.stop()
 
     # Initialize backend components
     vector_store = _init_vector_store()

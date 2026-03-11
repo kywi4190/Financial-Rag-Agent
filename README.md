@@ -207,6 +207,28 @@ Financial-Rag-Agent/
 └── CLAUDE.md
 ```
 
+## Deployment (Streamlit Community Cloud)
+
+1. Push this repo to GitHub.
+2. Go to [share.streamlit.io](https://share.streamlit.io) and click **New app**.
+3. Point it at your repo, branch `main`, main file path `app/main.py`.
+4. Open **Advanced settings > Secrets** and paste:
+   ```toml
+   OPENAI_API_KEY = "sk-..."
+   SEC_EDGAR_IDENTITY = "YourName your@email.com"
+   ```
+5. Click **Deploy**. The app will install from `requirements.txt` and `packages.txt` automatically.
+
+**Pre-configured files:**
+
+| File | Purpose |
+|---|---|
+| `.streamlit/config.toml` | Professional theme, XSRF protection, usage stats opt-out |
+| `.streamlit/secrets.toml.example` | Template for required secrets |
+| `packages.txt` | System-level apt packages (`build-essential` for native extensions) |
+
+> The app detects missing API keys at startup and displays setup instructions instead of crashing.
+
 ## Known Limitations & Future Work
 
 **Current limitations:**

@@ -13,6 +13,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from src.agents.query_engine import FinancialQueryEngine
 from src.evaluation.models import EvalReport
 from src.evaluation.ragas_eval import RAGASEvaluator

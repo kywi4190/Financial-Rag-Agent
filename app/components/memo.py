@@ -70,51 +70,14 @@ def render_memo_tab(memo_generator: object | None, available_tickers: list[str])
     if generate:
         year = int(year_selection) if year_selection != "Latest" else None
 
-        progress = st.progress(0, text="Starting memo generation...")
-        status = st.empty()
-
-        stages = [
-            (0.10, "Resolving company name..."),
-            (0.25, "Extracting financial data (XBRL)..."),
-            (0.45, "Analyzing company overview..."),
-            (0.60, "Extracting risk factors..."),
-            (0.75, "Synthesizing MD&A..."),
-            (0.85, "Generating executive summary..."),
-            (0.95, "Building bull & bear cases..."),
-        ]
-
-        # Show progressive updates while generating
-        import threading
-        import time
-
-        progress_done = threading.Event()
-
-        def _update_progress() -> None:
-            for pct, msg in stages:
-                if progress_done.is_set():
-                    break
-                progress.progress(pct, text=msg)
-                status.caption(msg)
-                time.sleep(2.5)
-
-        thread = threading.Thread(target=_update_progress, daemon=True)
-        thread.start()
-
-        try:
-            memo = memo_generator.generate_memo(ticker, year=year)
-            progress_done.set()
-            thread.join(timeout=1)
-            progress.progress(1.0, text="Memo complete!")
-            status.empty()
-
-            st.session_state.last_memo = memo
-        except Exception as e:
-            progress_done.set()
-            thread.join(timeout=1)
-            progress.empty()
-            status.empty()
-            st.error(f"Memo generation failed: {e}")
-            return
+        with st.spinner("Generating investment memo — this may take a minute..."):
+            try:
+                memo = memo_generator.generate_memo(ticker, year=year)
+                st.session_state.last_memo = memo
+                st.success("Memo generated!")
+            except Exception as e:
+                st.error(f"Memo generation failed: {e}")
+                return
 
     # Display memo if available
     memo = st.session_state.get("last_memo")
