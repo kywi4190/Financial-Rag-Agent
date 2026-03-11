@@ -247,4 +247,4 @@ Financial-Rag-Agent/
 
 ---
 
-Built by [Your Name] -- finance background (economics/applied math) + software engineering. Targeting ML engineering roles at finance AI startups.
+Built by Kyle Wilson -- finance background + applied math + software engineering.
