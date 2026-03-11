@@ -1,1 +1,1 @@
-"""Streamlit UI components."""
+"""Streamlit UI components for the Financial RAG Agent."""
