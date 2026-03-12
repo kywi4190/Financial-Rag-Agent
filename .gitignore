@@ -16,6 +16,9 @@ data/
 # ChromaDB
 .chroma/
 
+# BM25
+.bm25/
+
 # IDE
 .vscode/
 .idea/

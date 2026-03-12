@@ -29,6 +29,7 @@ from src.evaluation.test_questions import (
     load_test_questions,
     save_test_questions,
 )
+from src.config import get_settings
 from src.retrieval.bm25_search import BM25Index
 from src.retrieval.hybrid import HybridRetriever
 from src.retrieval.models import RetrievalConfig
@@ -141,6 +142,11 @@ def main() -> None:
         default="gpt-4o-mini",
         help="LLM model for RAGAS evaluation (default: gpt-4o-mini)",
     )
+    parser.add_argument(
+        "--rebuild-bm25",
+        action="store_true",
+        help="Force rebuild BM25 index from ChromaDB instead of loading from disk",
+    )
     args = parser.parse_args()
 
     # Generate-only mode
@@ -180,18 +186,24 @@ def main() -> None:
             stats["count"], stats["tickers"], stats["years"],
         )
 
-        bm25 = BM25Index()
-        all_docs = vector_store._collection.get(include=["documents", "metadatas"])
-        if all_docs["documents"]:
-            chunks = []
-            for i, doc in enumerate(all_docs["documents"]):
-                meta = all_docs["metadatas"][i]
-                chunks.append(DocumentChunk(
-                    chunk_id=all_docs["ids"][i],
-                    content=doc,
-                    metadata=ChunkMetadata(**meta),
-                ))
-            bm25.build_index(chunks)
+        bm25_path = Path(get_settings().bm25_persist_dir) / "bm25_index.pkl"
+        if bm25_path.exists() and not args.rebuild_bm25:
+            logger.info("Loading BM25 index from %s", bm25_path)
+            bm25 = BM25Index.load_index(bm25_path)
+        else:
+            bm25 = BM25Index()
+            all_docs = vector_store._collection.get(include=["documents", "metadatas"])
+            if all_docs["documents"]:
+                chunks = []
+                for i, doc in enumerate(all_docs["documents"]):
+                    meta = all_docs["metadatas"][i]
+                    chunks.append(DocumentChunk(
+                        chunk_id=all_docs["ids"][i],
+                        content=doc,
+                        metadata=ChunkMetadata(**meta),
+                    ))
+                bm25.build_index(chunks)
+                bm25.save_index(bm25_path)
 
         reranker = Reranker()
         retriever = HybridRetriever(vector_store, bm25, RetrievalConfig(), reranker=reranker)

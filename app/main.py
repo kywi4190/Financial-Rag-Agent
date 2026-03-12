@@ -64,21 +64,36 @@ def _init_retriever(_vector_store: "ChromaStore") -> "HybridRetriever | None":
         from src.retrieval.hybrid import HybridRetriever
         from src.retrieval.models import RetrievalConfig
 
-        # Build BM25 index from ChromaDB documents
-        bm25 = BM25Index()
-        all_docs = _vector_store._collection.get(include=["documents", "metadatas"])
-        if all_docs["documents"]:
+        # Try loading persisted BM25 index, fall back to building from ChromaDB
+        from src.config import get_settings
+
+        bm25_path = Path(get_settings().bm25_persist_dir) / "bm25_index.pkl"
+        bm25 = None
+        try:
+            if bm25_path.exists():
+                bm25 = BM25Index.load_index(bm25_path)
+        except Exception:
+            logger.warning("Failed to load BM25 index from %s, rebuilding", bm25_path)
+
+        if bm25 is None:
             from src.chunking.models import ChunkMetadata, DocumentChunk
 
-            chunks = []
-            for i, doc in enumerate(all_docs["documents"]):
-                meta = all_docs["metadatas"][i]
-                chunks.append(DocumentChunk(
-                    chunk_id=all_docs["ids"][i],
-                    content=doc,
-                    metadata=ChunkMetadata(**meta),
-                ))
-            bm25.build_index(chunks)
+            bm25 = BM25Index()
+            all_docs = _vector_store._collection.get(include=["documents", "metadatas"])
+            if all_docs["documents"]:
+                chunks = []
+                for i, doc in enumerate(all_docs["documents"]):
+                    meta = all_docs["metadatas"][i]
+                    chunks.append(DocumentChunk(
+                        chunk_id=all_docs["ids"][i],
+                        content=doc,
+                        metadata=ChunkMetadata(**meta),
+                    ))
+                bm25.build_index(chunks)
+                try:
+                    bm25.save_index(bm25_path)
+                except Exception:
+                    logger.warning("Failed to save BM25 index to %s", bm25_path)
 
         config = RetrievalConfig()
 

@@ -206,6 +206,70 @@ class TestBM25Tokenizer:
         assert "long-term" in tokens
 
 
+class TestBM25Persistence:
+    """Tests for BM25Index save/load persistence."""
+
+    def _build_sample_index(self) -> BM25Index:
+        """Build a small BM25 index for persistence tests."""
+        chunks = [
+            _make_chunk("Apple reported record revenue of $394 billion", chunk_id="c1"),
+            _make_chunk("Risk factors include supply chain disruptions", chunk_id="c2"),
+            _make_chunk("Revenue and net income reached record levels", chunk_id="c3"),
+        ]
+        index = BM25Index()
+        index.build_index(chunks)
+        return index
+
+    def test_save_creates_file(self, tmp_path) -> None:
+        """Test save_index creates a file at the expected path."""
+        index = self._build_sample_index()
+        path = tmp_path / "bm25_index.pkl"
+        index.save_index(path)
+        assert path.exists()
+        assert path.stat().st_size > 0
+
+    def test_load_restores_functional_index(self, tmp_path) -> None:
+        """Test load_index restores a functional BM25Index."""
+        index = self._build_sample_index()
+        path = tmp_path / "bm25_index.pkl"
+        index.save_index(path)
+
+        loaded = BM25Index.load_index(path)
+        results = loaded.search("revenue", top_k=3)
+        assert len(results) > 0
+        assert all(isinstance(r, SearchResult) for r in results)
+
+    def test_load_raises_file_not_found(self, tmp_path) -> None:
+        """Test load_index raises FileNotFoundError for missing path."""
+        missing_path = tmp_path / "nonexistent.pkl"
+        with pytest.raises(FileNotFoundError):
+            BM25Index.load_index(missing_path)
+
+    def test_roundtrip_produces_identical_results(self, tmp_path) -> None:
+        """Test build -> save -> load -> search produces identical results."""
+        index = self._build_sample_index()
+        original_results = index.search("revenue growth", top_k=3)
+
+        path = tmp_path / "bm25_index.pkl"
+        index.save_index(path)
+        loaded = BM25Index.load_index(path)
+        loaded_results = loaded.search("revenue growth", top_k=3)
+
+        assert len(loaded_results) == len(original_results)
+        for orig, restored in zip(original_results, loaded_results):
+            assert orig.chunk_id == restored.chunk_id
+            assert orig.content == restored.content
+            assert orig.score == pytest.approx(restored.score)
+            assert orig.metadata.ticker == restored.metadata.ticker
+
+    def test_save_creates_parent_directories(self, tmp_path) -> None:
+        """Test save creates parent directories if they don't exist."""
+        index = self._build_sample_index()
+        path = tmp_path / "nested" / "dirs" / "bm25_index.pkl"
+        index.save_index(path)
+        assert path.exists()
+
+
 class TestBM25Index:
     """Tests for BM25Index."""
 

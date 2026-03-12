@@ -5,12 +5,14 @@ as a complement to dense vector search in the hybrid pipeline.
 """
 
 import logging
+import pickle
 import re
+from pathlib import Path
 
 import numpy as np
 from rank_bm25 import BM25Okapi
 
-from src.chunking.models import DocumentChunk
+from src.chunking.models import ChunkMetadata, DocumentChunk
 from src.retrieval.models import SearchResult
 
 logger = logging.getLogger(__name__)
@@ -55,6 +57,58 @@ class BM25Index:
         tokenized = [self._tokenize(c.content) for c in self._chunks]
         self._bm25 = BM25Okapi(tokenized)
         logger.info("Built BM25 index over %d chunks", len(self._chunks))
+
+    def save_index(self, path: Path) -> None:
+        """Serialize the BM25 index and chunk data to disk.
+
+        Args:
+            path: File path to save the index (e.g., .bm25/bm25_index.pkl).
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "chunks_data": [
+                {
+                    "chunk_id": c.chunk_id,
+                    "content": c.content,
+                    "metadata": c.metadata.model_dump(),
+                }
+                for c in self._chunks
+            ],
+            "tokenized_corpus": [self._tokenize(c.content) for c in self._chunks],
+        }
+        with open(path, "wb") as f:
+            pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+        logger.info("Saved BM25 index (%d chunks) to %s", len(self._chunks), path)
+
+    @classmethod
+    def load_index(cls, path: Path) -> "BM25Index":
+        """Load a previously saved BM25 index from disk.
+
+        Args:
+            path: Path to the saved index file.
+
+        Returns:
+            Restored BM25Index ready for search.
+
+        Raises:
+            FileNotFoundError: If the index file does not exist.
+        """
+        if not path.exists():
+            raise FileNotFoundError(f"BM25 index file not found: {path}")
+        with open(path, "rb") as f:
+            data = pickle.load(f)  # noqa: S301
+        instance = cls()
+        instance._chunks = [
+            DocumentChunk(
+                chunk_id=cd["chunk_id"],
+                content=cd["content"],
+                metadata=ChunkMetadata(**cd["metadata"]),
+            )
+            for cd in data["chunks_data"]
+        ]
+        instance._bm25 = BM25Okapi(data["tokenized_corpus"])
+        logger.info("Loaded BM25 index (%d chunks) from %s", len(instance._chunks), path)
+        return instance
 
     def search(self, query: str, top_k: int = 20) -> list[SearchResult]:
         """Perform BM25 keyword search.

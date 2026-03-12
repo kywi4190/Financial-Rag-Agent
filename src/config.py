@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     openai_api_key: str
     sec_edgar_identity: str
     chroma_persist_dir: str = ".chroma"
+    bm25_persist_dir: str = ".bm25"
     embedding_model: str = "text-embedding-3-small"
     llm_model: str = "gpt-4o-mini"
     chunk_size: int = 768
