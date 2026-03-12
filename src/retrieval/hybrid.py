@@ -12,6 +12,7 @@ from typing import Optional
 
 from src.retrieval.bm25_search import BM25Index
 from src.retrieval.models import RetrievalConfig, SearchResult
+from src.retrieval.reranker import Reranker
 from src.retrieval.vector_store import ChromaStore
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,17 @@ class HybridRetriever:
         config: RetrievalConfig with top_k, weights, and filters.
     """
 
+    _SECTION_ROUTING: dict[str, list[str]] = {
+        r"balance sheet|assets|liabilities|equity|stockholders": ["Item 8"],
+        r"risk|risk factor": ["Item 1A"],
+        r"revenue|income|margin|earnings|profit|operat": ["Item 7", "Item 8"],
+        r"business|overview|strategy|product|segment": ["Item 1"],
+        r"market risk|interest rate|currency|foreign exchange": ["Item 7A"],
+        r"cash flow|liquidity|capital": ["Item 7", "Item 8"],
+    }
+
+    _SECTION_BOOST = 1.3
+
     _FINANCIAL_SYNONYMS: dict[str, list[str]] = {
         "revenue": ["net sales", "total revenue", "net revenue"],
         "earnings": ["net income", "net earnings", "profit"],
@@ -93,16 +105,34 @@ class HybridRetriever:
             return query + " OR " + " OR ".join(expansions)
         return query
 
+    @staticmethod
+    def _detect_target_sections(query: str) -> list[str]:
+        """Detect SEC filing sections relevant to the query.
+
+        Args:
+            query: Natural language query string.
+
+        Returns:
+            List of section prefixes (e.g., ["Item 7", "Item 8"]).
+        """
+        sections: set[str] = set()
+        for pattern, targets in HybridRetriever._SECTION_ROUTING.items():
+            if re.search(pattern, query, re.IGNORECASE):
+                sections.update(targets)
+        return sorted(sections)
+
     def __init__(
         self,
         vector_store: ChromaStore,
         bm25_index: BM25Index,
         config: RetrievalConfig | None = None,
+        reranker: Reranker | None = None,
     ) -> None:
         """Initialize the hybrid retriever."""
         self._vector_store = vector_store
         self._bm25_index = bm25_index
         self._config = config or RetrievalConfig()
+        self._reranker = reranker
         self._rrf_k = 60
 
     @staticmethod
@@ -150,7 +180,24 @@ class HybridRetriever:
             ]
             fused.sort(key=lambda r: r.score, reverse=True)
 
-        return fused[: cfg.top_k]
+        # Cross-encoder reranking
+        if self._reranker is not None:
+            results = self._reranker.rerank(query, fused, cfg.rerank_top_k)
+        else:
+            results = fused[: cfg.top_k]
+
+        # Query-type section boosting
+        target_sections = self._detect_target_sections(query)
+        if target_sections:
+            results = [
+                r.model_copy(update={"score": r.score * self._SECTION_BOOST})
+                if any(r.metadata.section_name.startswith(s) for s in target_sections)
+                else r
+                for r in results
+            ]
+            results.sort(key=lambda r: r.score, reverse=True)
+
+        return results
 
     def _rrf_fuse(
         self,

@@ -81,7 +81,16 @@ def _init_retriever(_vector_store: "ChromaStore") -> "HybridRetriever | None":
             bm25.build_index(chunks)
 
         config = RetrievalConfig()
-        return HybridRetriever(_vector_store, bm25, config)
+
+        reranker = None
+        try:
+            from src.retrieval.reranker import Reranker
+
+            reranker = Reranker()
+        except Exception:
+            logger.warning("Reranker unavailable, continuing without cross-encoder reranking")
+
+        return HybridRetriever(_vector_store, bm25, config, reranker=reranker)
     except Exception:
         logger.exception("Failed to initialize retriever")
         return None

@@ -293,6 +293,112 @@ class TestHybridRetriever:
         assert "net sales" in expanded
         assert "liabilities" in expanded
 
+    def test_reranker_is_called_when_provided(self) -> None:
+        """Test that HybridRetriever delegates to reranker when one is set."""
+        dense_results = [
+            _make_result("c1", "doc1", score=0.9, source="dense"),
+            _make_result("c2", "doc2", score=0.8, source="dense"),
+        ]
+        sparse_results = [
+            _make_result("c2", "doc2", score=5.0, source="sparse"),
+        ]
+
+        mock_vs = MagicMock()
+        mock_vs.search.return_value = dense_results
+        mock_bm25 = MagicMock()
+        mock_bm25.search.return_value = sparse_results
+
+        mock_reranker = MagicMock()
+        mock_reranker.rerank.return_value = [
+            _make_result("c2", "doc2", score=1.0, source="rerank"),
+        ]
+
+        retriever = HybridRetriever(mock_vs, mock_bm25, reranker=mock_reranker)
+        results = retriever.search("test query")
+
+        mock_reranker.rerank.assert_called_once()
+        assert results[0].chunk_id == "c2"
+
+    def test_no_reranker_returns_top_k(self) -> None:
+        """Test that HybridRetriever without reranker returns fused[:top_k]."""
+        dense_results = [
+            _make_result("c1", "doc1", score=0.9, source="dense"),
+            _make_result("c2", "doc2", score=0.8, source="dense"),
+        ]
+        sparse_results = []
+
+        mock_vs = MagicMock()
+        mock_vs.search.return_value = dense_results
+        mock_bm25 = MagicMock()
+        mock_bm25.search.return_value = sparse_results
+
+        config = RetrievalConfig(top_k=1)
+        retriever = HybridRetriever(mock_vs, mock_bm25, config, reranker=None)
+        results = retriever.search("test query")
+
+        assert len(results) == 1
+
+    def test_detect_target_sections_balance_sheet(self) -> None:
+        """Test 'balance sheet' routes to Item 8."""
+        sections = HybridRetriever._detect_target_sections("What is on the balance sheet?")
+        assert "Item 8" in sections
+
+    def test_detect_target_sections_risk(self) -> None:
+        """Test 'risk factors' routes to Item 1A."""
+        sections = HybridRetriever._detect_target_sections("What are the risk factors?")
+        assert "Item 1A" in sections
+
+    def test_detect_target_sections_revenue(self) -> None:
+        """Test 'revenue' routes to Item 7 and Item 8."""
+        sections = HybridRetriever._detect_target_sections("What was the revenue?")
+        assert "Item 7" in sections
+        assert "Item 8" in sections
+
+    def test_detect_target_sections_no_match(self) -> None:
+        """Test generic query returns empty list."""
+        sections = HybridRetriever._detect_target_sections("Tell me about the company")
+        assert sections == []
+
+    def test_section_boost_increases_matching_score(self) -> None:
+        """Test that results with matching sections get boosted above non-matching."""
+        item8_result = SearchResult(
+            chunk_id="c1",
+            content="Balance sheet data",
+            score=0.5,
+            metadata=ChunkMetadata(
+                ticker="AAPL", year=2024, filing_type="10-K",
+                section_name="Item 8. Financial Statements", chunk_index=0,
+            ),
+            source="rerank",
+        )
+        item7_result = SearchResult(
+            chunk_id="c2",
+            content="MD&A discussion",
+            score=0.6,
+            metadata=ChunkMetadata(
+                ticker="AAPL", year=2024, filing_type="10-K",
+                section_name="Item 7. MD&A", chunk_index=0,
+            ),
+            source="rerank",
+        )
+
+        mock_vs = MagicMock()
+        mock_vs.search.return_value = [item8_result, item7_result]
+        mock_bm25 = MagicMock()
+        mock_bm25.search.return_value = []
+
+        mock_reranker = MagicMock()
+        # Reranker returns item7 ranked higher (0.6 > 0.5)
+        mock_reranker.rerank.return_value = [item7_result, item8_result]
+
+        retriever = HybridRetriever(mock_vs, mock_bm25, reranker=mock_reranker)
+        # "balance sheet" → boosts Item 8
+        results = retriever.search("balance sheet assets")
+
+        # Item 8 chunk should now rank first due to section boost (0.5 * 1.3 = 0.65 > 0.6)
+        assert results[0].chunk_id == "c1"
+        assert results[0].score > results[1].score
+
     def test_numerical_query_routing(self) -> None:
         """Test that numerical queries boost table chunk scores above text."""
         dense_results = [

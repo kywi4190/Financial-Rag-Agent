@@ -32,6 +32,7 @@ from src.evaluation.test_questions import (
 from src.retrieval.bm25_search import BM25Index
 from src.retrieval.hybrid import HybridRetriever
 from src.retrieval.models import RetrievalConfig
+from src.retrieval.reranker import Reranker
 from src.retrieval.vector_store import ChromaStore
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -192,7 +193,8 @@ def main() -> None:
                 ))
             bm25.build_index(chunks)
 
-        retriever = HybridRetriever(vector_store, bm25, RetrievalConfig())
+        reranker = Reranker()
+        retriever = HybridRetriever(vector_store, bm25, RetrievalConfig(), reranker=reranker)
         query_engine = FinancialQueryEngine(retriever=retriever)
     except Exception:
         logger.exception("Failed to initialize query engine")
