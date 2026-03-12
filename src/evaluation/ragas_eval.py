@@ -27,16 +27,71 @@ _MULTIPLIERS: dict[str, float] = {
 }
 
 
+class LlamaIndexEmbeddingAdapter:
+    """Adapter wrapping a LlamaIndex embedding model for RAGAS compatibility.
+
+    RAGAS expects a langchain-compatible embedding object with ``embed_query()``
+    and ``embed_documents()`` methods. This adapter delegates to LlamaIndex's
+    ``OpenAIEmbedding``, which exposes ``get_text_embedding()`` and
+    ``get_text_embedding_batch()``.
+
+    Args:
+        model_name: OpenAI embedding model identifier.
+    """
+
+    def __init__(self, model_name: str = "text-embedding-3-small") -> None:
+        """Initialize the adapter with a LlamaIndex OpenAIEmbedding."""
+        from llama_index.embeddings.openai import OpenAIEmbedding
+
+        self._embedding = OpenAIEmbedding(model=model_name)
+
+    def embed_query(self, text: str) -> list[float]:
+        """Embed a single query text.
+
+        Args:
+            text: The query string to embed.
+
+        Returns:
+            List of floats representing the embedding vector.
+        """
+        return self._embedding.get_text_embedding(text)
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Embed a batch of documents.
+
+        Args:
+            texts: List of document strings to embed.
+
+        Returns:
+            List of embedding vectors, one per document.
+        """
+        return self._embedding.get_text_embedding_batch(texts)
+
+
 class RAGASEvaluator:
     """Evaluates the RAG pipeline using RAGAS and custom financial metrics.
 
     Args:
         llm_model: OpenAI model identifier for RAGAS evaluation LLM.
+        embedding_model: OpenAI embedding model identifier. If ``None``,
+            reads from project settings via ``get_settings()``.
     """
 
-    def __init__(self, llm_model: str = "gpt-4o-mini") -> None:
+    def __init__(
+        self,
+        llm_model: str = "gpt-4o-mini",
+        embedding_model: str | None = None,
+    ) -> None:
         """Initialize the evaluator."""
         self._llm_model = llm_model
+        if embedding_model is None:
+            try:
+                from src.config import get_settings
+
+                embedding_model = get_settings().embedding_model
+            except Exception:
+                embedding_model = "text-embedding-3-small"
+        self._embedding_model = embedding_model
 
     def evaluate(
         self,
@@ -179,7 +234,12 @@ class RAGASEvaluator:
                 context_precision,
                 context_recall,
             ]
-            ragas_result = ragas_evaluate(dataset, metrics=metrics)
+            embedding_adapter = LlamaIndexEmbeddingAdapter(
+                model_name=self._embedding_model,
+            )
+            ragas_result = ragas_evaluate(
+                dataset, metrics=metrics, embeddings=embedding_adapter,
+            )
 
             # Extract per-question scores from the result DataFrame
             try:

@@ -12,7 +12,7 @@ from src.evaluation.models import (
     QuestionCategory,
     QuestionResult,
 )
-from src.evaluation.ragas_eval import RAGASEvaluator
+from src.evaluation.ragas_eval import LlamaIndexEmbeddingAdapter, RAGASEvaluator
 from src.evaluation.test_questions import (
     get_test_questions,
     load_test_questions,
@@ -140,6 +140,52 @@ class TestTestQuestions:
     def test_load_missing_file_raises(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError, match="not found"):
             load_test_questions(tmp_path / "nonexistent.json")
+
+
+# ── Embedding Adapter Tests ───────────────────────────────────────────────
+
+
+class TestLlamaIndexEmbeddingAdapter:
+    """Tests for LlamaIndexEmbeddingAdapter."""
+
+    @staticmethod
+    def _make_adapter(mock_embedding: MagicMock) -> LlamaIndexEmbeddingAdapter:
+        """Create an adapter with a mocked underlying embedding model."""
+        adapter = object.__new__(LlamaIndexEmbeddingAdapter)
+        adapter._embedding = mock_embedding
+        return adapter
+
+    def test_embed_query_returns_list_of_floats(self) -> None:
+        """Test that embed_query delegates to get_text_embedding."""
+        mock_embedding = MagicMock()
+        mock_embedding.get_text_embedding.return_value = [0.1] * 10
+
+        adapter = self._make_adapter(mock_embedding)
+        result = adapter.embed_query("test query")
+
+        assert isinstance(result, list)
+        assert len(result) == 10
+        assert all(isinstance(x, float) for x in result)
+        mock_embedding.get_text_embedding.assert_called_once_with("test query")
+
+    def test_embed_documents_returns_list_of_lists(self) -> None:
+        """Test that embed_documents delegates to get_text_embedding_batch."""
+        mock_embedding = MagicMock()
+        mock_embedding.get_text_embedding_batch.return_value = [
+            [0.1] * 10,
+            [0.2] * 10,
+        ]
+
+        adapter = self._make_adapter(mock_embedding)
+        result = adapter.embed_documents(["doc1", "doc2"])
+
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert all(isinstance(vec, list) for vec in result)
+        assert all(isinstance(x, float) for vec in result for x in vec)
+        mock_embedding.get_text_embedding_batch.assert_called_once_with(
+            ["doc1", "doc2"]
+        )
 
 
 # ── Number Extraction Tests ────────────────────────────────────────────────
