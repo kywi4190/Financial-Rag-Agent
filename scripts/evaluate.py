@@ -15,7 +15,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from src.agents.query_engine import FinancialQueryEngine
+from src.chunking.models import ChunkMetadata, DocumentChunk
 from src.evaluation.models import EvalReport
 from src.evaluation.ragas_eval import RAGASEvaluator
 from src.evaluation.test_questions import (
@@ -24,6 +29,10 @@ from src.evaluation.test_questions import (
     load_test_questions,
     save_test_questions,
 )
+from src.retrieval.bm25_search import BM25Index
+from src.retrieval.hybrid import HybridRetriever
+from src.retrieval.models import RetrievalConfig
+from src.retrieval.vector_store import ChromaStore
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -48,7 +57,7 @@ def print_results_table(report: EvalReport) -> None:
     print("  OVERALL SCORES")
     print("-" * 70)
     print(f"  {'Metric':<25} {'Score':>10}")
-    print(f"  {'─' * 25} {'─' * 10}")
+    print(f"  {'-' * 25} {'-' * 10}")
     for metric, score in sorted(report.overall_scores.items()):
         print(f"  {metric:<25} {score:>10.4f}")
 
@@ -59,7 +68,7 @@ def print_results_table(report: EvalReport) -> None:
     for category, scores in sorted(report.per_category_scores.items()):
         print(f"\n  [{category.upper()}]")
         print(f"  {'Metric':<25} {'Score':>10}")
-        print(f"  {'─' * 25} {'─' * 10}")
+        print(f"  {'-' * 25} {'-' * 10}")
         for metric, score in sorted(scores.items()):
             print(f"  {metric:<25} {score:>10.4f}")
 
@@ -158,9 +167,33 @@ def main() -> None:
         sum(1 for q in test_questions if q.category.value == "analytical"),
     )
 
-    # Set up query engine
+    # Set up retriever pipeline and query engine
     try:
-        query_engine = FinancialQueryEngine()
+        vector_store = ChromaStore()
+        stats = vector_store.get_collection_stats()
+        if stats.get("count", 0) == 0:
+            logger.error("No documents indexed. Run scripts/ingest.py first.")
+            sys.exit(1)
+        logger.info(
+            "ChromaDB: %d chunks, tickers=%s, years=%s",
+            stats["count"], stats["tickers"], stats["years"],
+        )
+
+        bm25 = BM25Index()
+        all_docs = vector_store._collection.get(include=["documents", "metadatas"])
+        if all_docs["documents"]:
+            chunks = []
+            for i, doc in enumerate(all_docs["documents"]):
+                meta = all_docs["metadatas"][i]
+                chunks.append(DocumentChunk(
+                    chunk_id=all_docs["ids"][i],
+                    content=doc,
+                    metadata=ChunkMetadata(**meta),
+                ))
+            bm25.build_index(chunks)
+
+        retriever = HybridRetriever(vector_store, bm25, RetrievalConfig())
+        query_engine = FinancialQueryEngine(retriever=retriever)
     except Exception:
         logger.exception("Failed to initialize query engine")
         sys.exit(1)
@@ -169,12 +202,12 @@ def main() -> None:
     evaluator = RAGASEvaluator(llm_model=args.llm_model)
     report = evaluator.evaluate(test_questions, query_engine)
 
-    # Print results
-    print_results_table(report)
-
-    # Save results
+    # Save results first (before printing, in case display fails)
     output_path = save_results(report, args.output)
     print(f"\nResults saved to: {output_path}")
+
+    # Print results
+    print_results_table(report)
 
 
 if __name__ == "__main__":

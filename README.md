@@ -102,16 +102,18 @@ Agentic RAG system that ingests SEC 10-K/10-Q filings, retrieves context via hyb
 
 ## Evaluation Results
 
-| Metric | Score | Category Breakdown |
+| Metric | Score | Notes |
 |---|---|---|
-| Faithfulness | _0.XX_ | Numerical: _0.XX_ / Comparative: _0.XX_ / Analytical: _0.XX_ |
-| Context Precision | _0.XX_ | Numerical: _0.XX_ / Comparative: _0.XX_ / Analytical: _0.XX_ |
-| Context Recall | _0.XX_ | Numerical: _0.XX_ / Comparative: _0.XX_ / Analytical: _0.XX_ |
-| Answer Relevancy | _0.XX_ | Numerical: _0.XX_ / Comparative: _0.XX_ / Analytical: _0.XX_ |
-| Citation Accuracy | _0.XX_ | Numerical: _0.XX_ / Comparative: _0.XX_ / Analytical: _0.XX_ |
-| Numerical Accuracy | _0.XX_ | Numerical: _0.XX_ |
+| Faithfulness | **0.60** | Measures whether generated answers are grounded in retrieved context |
+| Context Precision | **0.49** | Measures relevance of retrieved chunks to the query |
+| Context Recall | **0.35** | Measures coverage of ground-truth information in retrieved context |
+| Answer Relevancy | N/A* | *ragas/LlamaIndex embedding compatibility issue prevents computation* |
+| Citation Accuracy | **0.54** | Custom metric: fraction of retrieved contexts matching ground-truth sections |
+| Numerical Accuracy | **0.72** | Custom metric: extracted numbers within 1% tolerance of ground truth |
 
-> Evaluated on 50 curated questions (20 numerical, 15 comparative, 15 analytical) across AAPL, MSFT, and GOOGL 10-K filings.
+> Evaluated on 50 curated questions (20 numerical, 15 comparative, 15 analytical) across AAPL, MSFT, and GOOGL 10-K filings (2022-2025).
+>
+> \*Answer Relevancy requires ragas-compatible embeddings with `embed_query()`. The current LlamaIndex/OpenAI embedding wrapper does not expose this interface. See Future Work.
 
 ## Tech Stack
 
@@ -236,6 +238,14 @@ Financial-Rag-Agent/
 - XBRL extraction limited to inline `ix:nonfraction` tags; does not parse full XBRL instance documents
 - Reranker runs on CPU -- adds latency on the cross-encoder pass per query
 - Evaluation requires ingested data and API calls -- no offline/cached mode
+- RAGAS answer_relevancy metric incompatible with LlamaIndex OpenAI embeddings (missing `embed_query` interface)
+
+**Evaluation-informed improvements** (scores below 0.7):
+- **Context Recall (0.35):** Increase retrieval depth from top-5 to top-10, add query expansion with financial synonyms (e.g., "revenue" -> "net sales", "total revenue"), and improve metadata filtering to better match fiscal year queries to filing dates
+- **Context Precision (0.49):** Fine-tune RRF weights and cross-encoder reranker threshold, add query-type-aware retrieval strategies (balance sheet queries should prioritize Item 8 financial statement chunks)
+- **Citation Accuracy (0.54):** Improve section-level metadata tagging during chunking, add explicit section identifiers to chunk prefixes for more reliable source attribution
+- **Faithfulness (0.60):** Tighten the CRAG confidence threshold (0.6 -> 0.7) and add post-generation grounding verification, reduce hallucination on low-confidence retrievals by returning "insufficient data" instead of speculating
+- **Answer Relevancy (N/A):** Wrap OpenAI embeddings with a langchain-compatible adapter exposing `embed_query()` for ragas compatibility
 
 **Planned improvements:**
 - Persistent BM25 index serialization to avoid cold-start rebuild

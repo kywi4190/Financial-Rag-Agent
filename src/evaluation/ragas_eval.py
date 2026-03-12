@@ -163,13 +163,13 @@ class RAGASEvaluator:
             return
 
         try:
-            # Build RAGAS dataset
+            # Build RAGAS dataset using ragas 0.4.x column names
             dataset = Dataset.from_dict(
                 {
-                    "question": [q.question for q in questions],
-                    "answer": [r.predicted_answer for r in results],
-                    "contexts": [r.retrieved_contexts for r in results],
-                    "ground_truth": [q.ground_truth_answer for q in questions],
+                    "user_input": [q.question for q in questions],
+                    "response": [r.predicted_answer for r in results],
+                    "retrieved_contexts": [r.retrieved_contexts for r in results],
+                    "reference": [q.ground_truth_answer for q in questions],
                 }
             )
 
