@@ -30,8 +30,20 @@ class BM25Index:
 
     @staticmethod
     def _tokenize(text: str) -> list[str]:
-        """Lowercase and split on non-alphanumeric characters."""
-        return re.findall(r"[a-z0-9]+", text.lower())
+        """Tokenize preserving financial compound terms.
+
+        Keeps SEC filing types (10-K, 10-Q), dollar amounts, percentages,
+        and hyphenated compound words as single tokens.
+        """
+        text = text.lower()
+        tokens = re.findall(
+            r"\d{1,2}-[kq]"            # SEC filings: 10-k, 10-q
+            r"|\$?\d+(?:\.\d+)?%?"     # numbers with optional $ prefix or % suffix
+            r"|[a-z]+(?:-[a-z]+)+"     # hyphenated compounds: year-over-year
+            r"|[a-z0-9]+",             # regular alphanumeric tokens
+            text,
+        )
+        return [cleaned for t in tokens if (cleaned := t.lstrip("$").rstrip("%"))]
 
     def build_index(self, chunks: list[DocumentChunk]) -> None:
         """Build or rebuild the BM25 index from a set of chunks.

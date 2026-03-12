@@ -114,7 +114,7 @@ class FinancialQueryEngine:
         self,
         query: str,
         ticker: str | None = None,
-        top_k: int = 5,
+        top_k: int = 10,
     ) -> list[dict[str, Any]]:
         """Retrieve context using the hybrid retriever."""
         if self._retriever is None:

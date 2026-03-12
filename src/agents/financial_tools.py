@@ -280,7 +280,7 @@ def retrieve_context_tool(
     query: str,
     retriever: HybridRetriever,
     ticker: str | None = None,
-    top_k: int = 5,
+    top_k: int = 10,
 ) -> list[dict[str, Any]]:
     """Retrieve context from the hybrid retriever with formatted citations.
 

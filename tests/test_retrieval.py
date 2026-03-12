@@ -174,6 +174,38 @@ class TestChromaStore:
 # ---------------------------------------------------------------------------
 
 
+class TestBM25Tokenizer:
+    """Tests for improved BM25Index._tokenize."""
+
+    def test_sec_filing_type_preserved(self) -> None:
+        """Test '10-K' stays as single token."""
+        tokens = BM25Index._tokenize("10-K filing")
+        assert "10-k" in tokens
+
+    def test_dollar_amount(self) -> None:
+        """Test '$391.0 billion' preserves the number without $."""
+        tokens = BM25Index._tokenize("$391.0 billion")
+        assert "391.0" in tokens
+        assert "billion" in tokens
+
+    def test_percentage(self) -> None:
+        """Test '46.2%' becomes '46.2' without %."""
+        tokens = BM25Index._tokenize("46.2% growth")
+        assert "46.2" in tokens
+        assert "growth" in tokens
+
+    def test_hyphenated_compound(self) -> None:
+        """Test 'year-over-year' stays as single token."""
+        tokens = BM25Index._tokenize("year-over-year growth")
+        assert "year-over-year" in tokens
+        assert "growth" in tokens
+
+    def test_long_term_preserved(self) -> None:
+        """Test 'long-term' stays as single token."""
+        tokens = BM25Index._tokenize("long-term debt")
+        assert "long-term" in tokens
+
+
 class TestBM25Index:
     """Tests for BM25Index."""
 
@@ -240,6 +272,26 @@ class TestHybridRetriever:
         assert set(top_ids) == {"c1", "c2"}
         # Scores should decrease
         assert results[0].score >= results[1].score >= results[2].score
+
+    def test_expand_query_with_revenue(self) -> None:
+        """Test query with 'revenue' expands to include synonyms."""
+        expanded = HybridRetriever._expand_query("What was Apple's revenue?")
+        assert "net sales" in expanded
+        assert "total revenue" in expanded
+        assert "net revenue" in expanded
+        # Original query preserved
+        assert expanded.startswith("What was Apple's revenue?")
+
+    def test_expand_query_no_match(self) -> None:
+        """Test query with no matching terms returns unchanged."""
+        query = "Tell me about Apple's management team"
+        assert HybridRetriever._expand_query(query) == query
+
+    def test_expand_query_multiple_terms(self) -> None:
+        """Test query with multiple matching terms expands all."""
+        expanded = HybridRetriever._expand_query("Compare revenue and debt")
+        assert "net sales" in expanded
+        assert "liabilities" in expanded
 
     def test_numerical_query_routing(self) -> None:
         """Test that numerical queries boost table chunk scores above text."""
