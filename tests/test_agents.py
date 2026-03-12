@@ -357,10 +357,11 @@ class TestFinancialQueryEngine:
         # Override the LLM to control outputs
         engine._llm = mock_llm
 
-        # First call: relevance score, Second call: answer
+        # First call: relevance score, Second call: answer, Third call: grounding
         mock_llm.complete.side_effect = [
             MagicMock(text="0.9"),  # relevance eval
             MagicMock(text="Apple revenue was $383.3 billion in FY2024."),  # answer
+            MagicMock(text="SCORE: 0.9\nANSWER: Apple revenue was $383.3 billion in FY2024."),  # grounding
         ]
 
         result = engine.query("What was Apple's revenue in 2024?")
@@ -377,7 +378,7 @@ class TestFinancialQueryEngine:
         mock_settings: MagicMock,
         mock_retriever: MagicMock,
     ) -> None:
-        """Test CRAG reformulates query when confidence < 0.6."""
+        """Test CRAG reformulates query when confidence < 0.7."""
         mock_settings.return_value.llm_model = "gpt-4o-mini"
         mock_settings.return_value.embedding_model = "text-embedding-3-small"
 
@@ -390,10 +391,11 @@ class TestFinancialQueryEngine:
         engine._llm = mock_llm
 
         mock_llm.complete.side_effect = [
-            MagicMock(text="0.3"),  # low relevance -> triggers reformulation
+            MagicMock(text="0.65"),  # below 0.7 -> triggers reformulation
             MagicMock(text="What was Apple Inc total revenue for fiscal year 2024?"),  # reformulation
             MagicMock(text="0.8"),  # second relevance eval
             MagicMock(text="Revenue was $383.3 billion."),  # final answer
+            MagicMock(text="SCORE: 0.85\nANSWER: Revenue was $383.3 billion."),  # grounding
         ]
 
         result = engine.query("AAPL rev 24?")
@@ -426,6 +428,7 @@ class TestFinancialQueryEngine:
         mock_llm.complete.side_effect = [
             MagicMock(text="0.85"),
             MagicMock(text="Apple revenue was $383 billion."),
+            MagicMock(text="SCORE: 0.9\nANSWER: Apple revenue was $383 billion."),
         ]
 
         result = engine.query_with_filters(
@@ -460,6 +463,40 @@ class TestFinancialQueryEngine:
         result = engine.query("Anything?")
         assert isinstance(result, AnswerWithCitations)
         assert result.confidence == 0.0
+
+    @patch("src.agents.query_engine.get_settings")
+    @patch("src.agents.query_engine.OpenAI")
+    @patch("src.agents.query_engine.OpenAIEmbedding")
+    def test_verify_grounding_low_score_returns_insufficient_data(
+        self,
+        mock_embed_cls: MagicMock,
+        mock_llm_cls: MagicMock,
+        mock_settings: MagicMock,
+        mock_retriever: MagicMock,
+    ) -> None:
+        """Test that low grounding score returns insufficient information fallback."""
+        mock_settings.return_value.llm_model = "gpt-4o-mini"
+        mock_settings.return_value.embedding_model = "text-embedding-3-small"
+
+        mock_llm = MagicMock()
+        mock_llm_cls.return_value = mock_llm
+
+        from src.agents.query_engine import FinancialQueryEngine
+
+        engine = FinancialQueryEngine(retriever=mock_retriever)
+        engine._llm = mock_llm
+
+        mock_llm.complete.side_effect = [
+            MagicMock(text="0.8"),  # relevance eval — passes threshold
+            MagicMock(text="The company earned $500 billion in revenue."),  # answer
+            MagicMock(text="SCORE: 0.3\nANSWER: Revised answer."),  # low grounding
+        ]
+
+        result = engine.query("What was revenue?")
+        assert isinstance(result, AnswerWithCitations)
+        assert result.confidence == 0.0
+        assert result.citations == []
+        assert "could not find sufficient information" in result.answer.lower()
 
 
 # ── Memo Generator Tests ──────────────────────────────────────────────────

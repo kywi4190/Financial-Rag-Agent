@@ -39,7 +39,7 @@ Rules:
 - For numerical questions, prefer XBRL data when available over narrative text.
 """
 
-CRAG_CONFIDENCE_THRESHOLD = 0.6
+CRAG_CONFIDENCE_THRESHOLD = 0.7
 
 REFORMULATION_TEMPLATE = PromptTemplate(
     "The following query did not retrieve sufficiently relevant context:\n"
@@ -146,7 +146,7 @@ class FinancialQueryEngine:
             return 0.0
 
         context_text = "\n\n".join(
-            c["content"][:500] for c in context_chunks[:3]
+            c["content"][:800] for c in context_chunks[:5]
         )
 
         prompt = (
@@ -222,7 +222,13 @@ class FinancialQueryEngine:
             f"Context from SEC filings:\n{context_text}\n\n"
             f"Question: {query}\n\n"
             f"Provide a thorough answer based ONLY on the context above. "
-            f"Cite the source document and section for each claim."
+            f"Cite the source document and section for each claim.\n"
+            f"- If the context does not contain specific information to answer "
+            f"any part of the question, explicitly state that the information "
+            f"is not available rather than speculating.\n"
+            f"- Do not make inferences or calculations beyond what is directly "
+            f"stated in the context.\n"
+            f"- Every numerical claim must reference the specific source."
         )
 
         try:
@@ -252,6 +258,49 @@ class FinancialQueryEngine:
                 sum(c.get("score", 0.5) for c in context_chunks) / len(context_chunks),
             ),
         )
+
+    def _verify_grounding(
+        self,
+        answer_text: str,
+        context_chunks: list[dict[str, Any]],
+    ) -> tuple[str, float]:
+        """Verify that the generated answer is grounded in the provided context.
+
+        Args:
+            answer_text: The generated answer to verify.
+            context_chunks: The context chunks used for generation.
+
+        Returns:
+            Tuple of (verified_answer, grounding_score).
+            If grounding is poor, returns a revised answer with only supported claims.
+        """
+        context_text = "\n\n".join(
+            c["content"][:1000] for c in context_chunks[:5]
+        )
+
+        prompt = (
+            f"Review this answer for faithfulness to the provided context. "
+            f"Score the grounding on a 0.0-1.0 scale. If any claims are NOT "
+            f"supported by the context, rewrite the answer to include only "
+            f"well-supported claims. Respond in this exact format:\n"
+            f"SCORE: <number>\n"
+            f"ANSWER: <revised or original answer>\n\n"
+            f"Context:\n{context_text}\n\n"
+            f"Answer to verify:\n{answer_text}"
+        )
+
+        try:
+            response = self._llm.complete(prompt)
+            text = response.text.strip()
+            score_line, answer_line = text.split("\n", 1)
+            score = float(score_line.replace("SCORE:", "").strip())
+            verified_answer = answer_line.replace("ANSWER:", "", 1).strip()
+            score = max(0.0, min(1.0, score))
+            logger.info("Grounding verification score: %.2f", score)
+            return verified_answer, score
+        except Exception:
+            logger.warning("Grounding verification failed, using fallback")
+            return answer_text, 0.5
 
     def query(
         self,
@@ -286,6 +335,23 @@ class FinancialQueryEngine:
 
         # Step 4: Generate answer
         answer = self._generate_answer(question, context)
+
+        # Step 5: Verify grounding
+        if context and answer.confidence > 0.0:
+            verified_answer, grounding_score = self._verify_grounding(
+                answer.answer, context,
+            )
+            if grounding_score < 0.5:
+                answer = AnswerWithCitations(
+                    answer="I could not find sufficient information in the available "
+                           "SEC filings to answer this question confidently.",
+                    citations=[],
+                    confidence=0.0,
+                )
+            else:
+                answer.answer = verified_answer
+                answer.confidence = min(answer.confidence, grounding_score)
+
         return answer
 
     def query_with_filters(
