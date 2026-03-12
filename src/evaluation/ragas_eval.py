@@ -162,7 +162,10 @@ class RAGASEvaluator:
         if query_engine._retriever is not None:
             try:
                 raw_contexts = query_engine._retrieve_context(question.question)
-                contexts = [c["content"] for c in raw_contexts]
+                contexts = [
+                    f"{c['citation']['source_document']}, {c['citation']['section']}: {c['content']}"
+                    for c in raw_contexts
+                ]
             except Exception:
                 logger.warning("Context retrieval failed, using citation snippets")
 
@@ -300,11 +303,47 @@ class RAGASEvaluator:
                 )
 
     @staticmethod
+    def _parse_ground_truth_context(gt_context: str) -> dict[str, str] | None:
+        """Parse a ground truth context string into components.
+
+        Expected format: ``"{ticker} {filing_type} {year}, {section}"``
+        e.g. ``"AAPL 10-K 2024, Item 8. Financial Statements"``.
+
+        Args:
+            gt_context: Ground truth context string.
+
+        Returns:
+            Dict with keys ticker, filing_type, year, section, or None if
+            the format doesn't match.
+        """
+        match = re.match(
+            r"^([A-Z]{1,5})\s+(10-[KQ]|20-F|8-K)\s+(\d{4}),\s+(.+)$",
+            gt_context.strip(),
+        )
+        if not match:
+            return None
+        return {
+            "ticker": match.group(1),
+            "filing_type": match.group(2),
+            "year": match.group(3),
+            "section": match.group(4),
+        }
+
+    @staticmethod
     def _compute_citation_accuracy(
         question: EvalQuestion,
         result: QuestionResult,
     ) -> float:
         """Compute what fraction of retrieved contexts match ground truth sections.
+
+        Uses component-based matching when the ground truth format is parseable,
+        falling back to substring matching otherwise.
+
+        Scoring per retrieved context (best match across ground truths):
+        - ticker + section + year all match → 1.0
+        - section + year match (wrong/missing ticker) → 0.5
+        - section only matches → 0.25
+        - no section match → 0.0
 
         Args:
             question: Question with ground truth context sections.
@@ -316,24 +355,55 @@ class RAGASEvaluator:
         if not result.retrieved_contexts:
             return 0.0
 
-        matches = 0
+        parsed_gts = [
+            RAGASEvaluator._parse_ground_truth_context(gt)
+            for gt in question.ground_truth_contexts
+        ]
+
+        total_score = 0.0
         for ctx in result.retrieved_contexts:
             ctx_lower = ctx.lower()
-            for gt_section in question.ground_truth_contexts:
-                # Check if any ground truth section identifier appears in the context
-                if gt_section.lower() in ctx_lower:
-                    matches += 1
-                    break
-                # Also check partial matches on section name
-                # e.g., "Item 7. MD&A" appearing in the context
-                section_parts = gt_section.split(", ")
-                if len(section_parts) >= 2:
-                    section_name = section_parts[-1].lower()
-                    if section_name in ctx_lower:
-                        matches += 1
-                        break
+            best_score = 0.0
 
-        return matches / len(result.retrieved_contexts)
+            for gt_raw, parsed in zip(question.ground_truth_contexts, parsed_gts):
+                if parsed is not None:
+                    # Component-based matching
+                    section_match = parsed["section"].lower() in ctx_lower
+                    year_match = parsed["year"] in ctx
+                    ticker = parsed["ticker"]
+                    # Word boundary or bracket format match
+                    ticker_match = bool(
+                        re.search(
+                            rf"(?<![A-Za-z]){re.escape(ticker)}(?![A-Za-z])",
+                            ctx,
+                            re.IGNORECASE,
+                        )
+                    )
+
+                    if section_match and year_match and ticker_match:
+                        score = 1.0
+                    elif section_match and year_match:
+                        score = 0.5
+                    elif section_match:
+                        score = 0.25
+                    else:
+                        score = 0.0
+                else:
+                    # Fallback: original substring matching
+                    if gt_raw.lower() in ctx_lower:
+                        score = 1.0
+                    else:
+                        section_parts = gt_raw.split(", ")
+                        if len(section_parts) >= 2 and section_parts[-1].lower() in ctx_lower:
+                            score = 1.0
+                        else:
+                            score = 0.0
+
+                best_score = max(best_score, score)
+
+            total_score += best_score
+
+        return total_score / len(result.retrieved_contexts)
 
     @staticmethod
     def _compute_numerical_accuracy(

@@ -313,13 +313,50 @@ class TestNumericalAccuracy:
         assert score == 0.5  # 1 of 2 numbers match
 
 
+# ── Ground Truth Parsing Tests ────────────────────────────────────────────
+
+
+class TestParseGroundTruthContext:
+    """Tests for RAGASEvaluator._parse_ground_truth_context."""
+
+    def test_standard_format(self) -> None:
+        result = RAGASEvaluator._parse_ground_truth_context(
+            "AAPL 10-K 2024, Item 8. Financial Statements"
+        )
+        assert result == {
+            "ticker": "AAPL",
+            "filing_type": "10-K",
+            "year": "2024",
+            "section": "Item 8. Financial Statements",
+        }
+
+    def test_10q_format(self) -> None:
+        result = RAGASEvaluator._parse_ground_truth_context(
+            "MSFT 10-Q 2023, Item 2. MD&A"
+        )
+        assert result is not None
+        assert result["ticker"] == "MSFT"
+        assert result["filing_type"] == "10-Q"
+        assert result["year"] == "2023"
+        assert result["section"] == "Item 2. MD&A"
+
+    def test_invalid_format_returns_none(self) -> None:
+        result = RAGASEvaluator._parse_ground_truth_context("some random text")
+        assert result is None
+
+    def test_missing_comma_returns_none(self) -> None:
+        result = RAGASEvaluator._parse_ground_truth_context("AAPL 10-K 2024 Item 8")
+        assert result is None
+
+
 # ── Citation Accuracy Tests ───────────────────────────────────────────────
 
 
 class TestCitationAccuracy:
     """Tests for RAGASEvaluator._compute_citation_accuracy."""
 
-    def test_full_match(self) -> None:
+    def test_full_component_match(self) -> None:
+        """All three components (ticker, section, year) match → 1.0."""
         q = EvalQuestion(
             question="q",
             ground_truth_answer="a",
@@ -330,13 +367,32 @@ class TestCitationAccuracy:
             question="q",
             predicted_answer="a",
             retrieved_contexts=[
-                "AAPL 10-K 2024, Item 8. Financial Statements: Revenue was..."
+                "AAPL 2024 10-K, Item 8. Financial Statements: Revenue was..."
             ],
         )
         score = RAGASEvaluator._compute_citation_accuracy(q, r)
         assert score == 1.0
 
-    def test_partial_section_match(self) -> None:
+    def test_section_and_year_match_wrong_ticker(self) -> None:
+        """Section + year match but wrong ticker → 0.5."""
+        q = EvalQuestion(
+            question="q",
+            ground_truth_answer="a",
+            ground_truth_contexts=["AAPL 10-K 2024, Item 8. Financial Statements"],
+            category=QuestionCategory.NUMERICAL,
+        )
+        r = QuestionResult(
+            question="q",
+            predicted_answer="a",
+            retrieved_contexts=[
+                "MSFT 2024 10-K, Item 8. Financial Statements: Revenue was..."
+            ],
+        )
+        score = RAGASEvaluator._compute_citation_accuracy(q, r)
+        assert score == 0.5
+
+    def test_section_only_match(self) -> None:
+        """Only section matches (no year, no ticker) → 0.25."""
         q = EvalQuestion(
             question="q",
             ground_truth_answer="a",
@@ -351,9 +407,10 @@ class TestCitationAccuracy:
             ],
         )
         score = RAGASEvaluator._compute_citation_accuracy(q, r)
-        assert score == 1.0
+        assert score == 0.25
 
     def test_no_match(self) -> None:
+        """No component matches → 0.0."""
         q = EvalQuestion(
             question="q",
             ground_truth_answer="a",
@@ -381,7 +438,26 @@ class TestCitationAccuracy:
         score = RAGASEvaluator._compute_citation_accuracy(q, r)
         assert score == 0.0
 
-    def test_mixed_match(self) -> None:
+    def test_enriched_context_format(self) -> None:
+        """Context with citation metadata prepended matches fully → 1.0."""
+        q = EvalQuestion(
+            question="q",
+            ground_truth_answer="a",
+            ground_truth_contexts=["AAPL 10-K 2024, Item 8. Financial Statements"],
+            category=QuestionCategory.NUMERICAL,
+        )
+        r = QuestionResult(
+            question="q",
+            predicted_answer="a",
+            retrieved_contexts=[
+                "AAPL 2024 10-K, Item 8. Financial Statements: [Ticker: AAPL] [Year: 2024] Revenue was..."
+            ],
+        )
+        score = RAGASEvaluator._compute_citation_accuracy(q, r)
+        assert score == 1.0
+
+    def test_mixed_scores(self) -> None:
+        """Multiple contexts with different match levels are averaged."""
         q = EvalQuestion(
             question="q",
             ground_truth_answer="a",
@@ -392,12 +468,46 @@ class TestCitationAccuracy:
             question="q",
             predicted_answer="a",
             retrieved_contexts=[
-                "Item 7. MD&A: Revenue grew...",
-                "Item 1A. Risk Factors: Unrelated risk...",
+                "AAPL 2024 10-K, Item 7. MD&A: Revenue grew...",  # full → 1.0
+                "Item 1A. Risk Factors: Unrelated risk...",  # no match → 0.0
             ],
         )
         score = RAGASEvaluator._compute_citation_accuracy(q, r)
-        assert score == 0.5
+        assert score == pytest.approx(0.5)
+
+    def test_fallback_substring_match(self) -> None:
+        """Unparseable ground truth falls back to substring matching."""
+        q = EvalQuestion(
+            question="q",
+            ground_truth_answer="a",
+            ground_truth_contexts=["some custom context label"],
+            category=QuestionCategory.NUMERICAL,
+        )
+        r = QuestionResult(
+            question="q",
+            predicted_answer="a",
+            retrieved_contexts=[
+                "This contains some custom context label in the text."
+            ],
+        )
+        score = RAGASEvaluator._compute_citation_accuracy(q, r)
+        assert score == 1.0
+
+    def test_fallback_no_match(self) -> None:
+        """Unparseable ground truth with no substring match → 0.0."""
+        q = EvalQuestion(
+            question="q",
+            ground_truth_answer="a",
+            ground_truth_contexts=["some custom context label"],
+            category=QuestionCategory.NUMERICAL,
+        )
+        r = QuestionResult(
+            question="q",
+            predicted_answer="a",
+            retrieved_contexts=["Completely unrelated text."],
+        )
+        score = RAGASEvaluator._compute_citation_accuracy(q, r)
+        assert score == 0.0
 
 
 # ── Report Aggregation Tests ──────────────────────────────────────────────
@@ -593,10 +703,21 @@ class TestRAGASEvaluator:
         answer.confidence = 0.9
         engine.query.return_value = answer
 
-        # Mock retriever that returns contexts
+        # Mock retriever that returns contexts with citation metadata
         engine._retriever = MagicMock()
         engine._retrieve_context.return_value = [
-            {"content": "Item 8. Financial Statements: Revenue was $391B."},
+            {
+                "content": "[Ticker: AAPL] [Year: 2024] Item 8. Financial Statements: Revenue was $391B.",
+                "citation": {
+                    "source_document": "AAPL 2024 10-K",
+                    "section": "Item 8. Financial Statements",
+                    "ticker": "AAPL",
+                    "year": 2024,
+                    "quote_snippet": "Revenue was $391B.",
+                },
+                "score": 0.95,
+                "chunk_id": "chunk-001",
+            },
         ]
 
         evaluator = RAGASEvaluator()
