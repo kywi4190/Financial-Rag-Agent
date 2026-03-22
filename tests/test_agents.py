@@ -344,8 +344,8 @@ class TestFinancialQueryEngine:
         mock_retriever: MagicMock,
     ) -> None:
         """Test that query returns an AnswerWithCitations."""
-        mock_settings.return_value.llm_model = "gpt-4o-mini"
-        mock_settings.return_value.embedding_model = "text-embedding-3-small"
+        mock_settings.return_value.llm_model = "gpt-4o"
+        mock_settings.return_value.embedding_model = "text-embedding-3-large"
 
         mock_llm = MagicMock()
         mock_llm.complete.return_value = MagicMock(text="0.9")
@@ -379,8 +379,8 @@ class TestFinancialQueryEngine:
         mock_retriever: MagicMock,
     ) -> None:
         """Test CRAG reformulates query when confidence < 0.7."""
-        mock_settings.return_value.llm_model = "gpt-4o-mini"
-        mock_settings.return_value.embedding_model = "text-embedding-3-small"
+        mock_settings.return_value.llm_model = "gpt-4o"
+        mock_settings.return_value.embedding_model = "text-embedding-3-large"
 
         mock_llm = MagicMock()
         mock_llm_cls.return_value = mock_llm
@@ -414,8 +414,8 @@ class TestFinancialQueryEngine:
         mock_retriever: MagicMock,
     ) -> None:
         """Test query_with_filters returns a QueryResponse."""
-        mock_settings.return_value.llm_model = "gpt-4o-mini"
-        mock_settings.return_value.embedding_model = "text-embedding-3-small"
+        mock_settings.return_value.llm_model = "gpt-4o"
+        mock_settings.return_value.embedding_model = "text-embedding-3-large"
 
         mock_llm = MagicMock()
         mock_llm_cls.return_value = mock_llm
@@ -448,8 +448,8 @@ class TestFinancialQueryEngine:
         mock_settings: MagicMock,
     ) -> None:
         """Test that no retriever yields a low-confidence answer."""
-        mock_settings.return_value.llm_model = "gpt-4o-mini"
-        mock_settings.return_value.embedding_model = "text-embedding-3-small"
+        mock_settings.return_value.llm_model = "gpt-4o"
+        mock_settings.return_value.embedding_model = "text-embedding-3-large"
 
         mock_llm = MagicMock()
         mock_llm_cls.return_value = mock_llm
@@ -475,8 +475,8 @@ class TestFinancialQueryEngine:
         mock_retriever: MagicMock,
     ) -> None:
         """Test that low grounding score returns insufficient information fallback."""
-        mock_settings.return_value.llm_model = "gpt-4o-mini"
-        mock_settings.return_value.embedding_model = "text-embedding-3-small"
+        mock_settings.return_value.llm_model = "gpt-4o"
+        mock_settings.return_value.embedding_model = "text-embedding-3-large"
 
         mock_llm = MagicMock()
         mock_llm_cls.return_value = mock_llm
@@ -655,7 +655,7 @@ class TestMemoGenerator:
         memo_retriever: MagicMock,
     ) -> None:
         """Verify all memo sections are present and well-formed."""
-        mock_settings.return_value.llm_model = "gpt-4o-mini"
+        mock_settings.return_value.llm_model = "gpt-4o"
         mock_llm = MagicMock()
         mock_llm_cls.return_value = mock_llm
 
@@ -708,7 +708,7 @@ class TestMemoGenerator:
         memo_retriever: MagicMock,
     ) -> None:
         """Verify every section has at least one citation."""
-        mock_settings.return_value.llm_model = "gpt-4o-mini"
+        mock_settings.return_value.llm_model = "gpt-4o"
         mock_llm = MagicMock()
         mock_llm_cls.return_value = mock_llm
 
@@ -752,7 +752,7 @@ class TestMemoGenerator:
         apple_xbrl_data: pd.DataFrame,
     ) -> None:
         """Verify financial data agent extracts correct Apple metrics from XBRL."""
-        mock_settings.return_value.llm_model = "gpt-4o-mini"
+        mock_settings.return_value.llm_model = "gpt-4o"
         mock_llm = MagicMock()
         mock_llm_cls.return_value = mock_llm
         mock_llm.complete.return_value = MagicMock(text="Financial summary.")
@@ -789,7 +789,7 @@ class TestMemoGenerator:
         mock_settings: MagicMock,
     ) -> None:
         """Verify graceful handling when no XBRL data is available."""
-        mock_settings.return_value.llm_model = "gpt-4o-mini"
+        mock_settings.return_value.llm_model = "gpt-4o"
         mock_llm = MagicMock()
         mock_llm_cls.return_value = mock_llm
 
@@ -810,7 +810,7 @@ class TestMemoGenerator:
         mock_settings: MagicMock,
     ) -> None:
         """Verify memo generation works without a retriever (XBRL-only)."""
-        mock_settings.return_value.llm_model = "gpt-4o-mini"
+        mock_settings.return_value.llm_model = "gpt-4o"
         mock_llm = MagicMock()
         mock_llm_cls.return_value = mock_llm
 

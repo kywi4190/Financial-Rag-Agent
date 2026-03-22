@@ -39,7 +39,7 @@ class ChromaStore:
         self,
         persist_dir: str = ".chroma",
         collection_name: str = "financial_filings",
-        embedding_model: str = "text-embedding-3-small",
+        embedding_model: str = "text-embedding-3-large",
     ) -> None:
         """Initialize ChromaDB client and OpenAI embedding model."""
         self._persist_dir = persist_dir

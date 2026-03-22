@@ -39,7 +39,7 @@ class LlamaIndexEmbeddingAdapter:
         model_name: OpenAI embedding model identifier.
     """
 
-    def __init__(self, model_name: str = "text-embedding-3-small") -> None:
+    def __init__(self, model_name: str = "text-embedding-3-large") -> None:
         """Initialize the adapter with a LlamaIndex OpenAIEmbedding."""
         from llama_index.embeddings.openai import OpenAIEmbedding
 
@@ -79,7 +79,7 @@ class RAGASEvaluator:
 
     def __init__(
         self,
-        llm_model: str = "gpt-4o-mini",
+        llm_model: str = "gpt-4o",
         embedding_model: str | None = None,
     ) -> None:
         """Initialize the evaluator."""
@@ -90,7 +90,7 @@ class RAGASEvaluator:
 
                 embedding_model = get_settings().embedding_model
             except Exception:
-                embedding_model = "text-embedding-3-small"
+                embedding_model = "text-embedding-3-large"
         self._embedding_model = embedding_model
 
     def evaluate(

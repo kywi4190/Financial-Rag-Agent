@@ -179,10 +179,10 @@ def _render_sidebar(collection_stats: dict | None) -> None:
 
         # Model settings
         st.subheader("Model Settings")
-        st.text_input("LLM Model", value="gpt-4o-mini", key="llm_model", disabled=True)
+        st.text_input("LLM Model", value="gpt-4o", key="llm_model", disabled=True)
         st.text_input(
             "Embedding Model",
-            value="text-embedding-3-small",
+            value="text-embedding-3-large",
             key="embed_model",
             disabled=True,
         )

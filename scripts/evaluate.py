@@ -139,8 +139,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--llm-model",
-        default="gpt-4o-mini",
-        help="LLM model for RAGAS evaluation (default: gpt-4o-mini)",
+        default="gpt-4o",
+        help="LLM model for RAGAS evaluation (default: gpt-4o)",
     )
     parser.add_argument(
         "--rebuild-bm25",

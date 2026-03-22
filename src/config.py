@@ -26,8 +26,8 @@ class Settings(BaseSettings):
     sec_edgar_identity: str
     chroma_persist_dir: str = ".chroma"
     bm25_persist_dir: str = ".bm25"
-    embedding_model: str = "text-embedding-3-small"
-    llm_model: str = "gpt-4o-mini"
+    embedding_model: str = "text-embedding-3-large"
+    llm_model: str = "gpt-4o"
     chunk_size: int = 768
     chunk_overlap: int = 128
     top_k: int = 10
