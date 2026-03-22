@@ -165,7 +165,7 @@ class HybridRetriever:
         dense_results = self._vector_store.search(
             query, top_k=cfg.top_k, filters=effective_filters
         )
-        sparse_results = self._bm25_index.search(expanded_query, top_k=cfg.top_k)
+        sparse_results = self._bm25_index.search(expanded_query, top_k=cfg.top_k, filters=effective_filters)
 
         fused = self._rrf_fuse(
             dense_results, sparse_results, cfg.dense_weight, cfg.sparse_weight

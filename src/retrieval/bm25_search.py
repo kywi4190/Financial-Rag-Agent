@@ -110,12 +110,18 @@ class BM25Index:
         logger.info("Loaded BM25 index (%d chunks) from %s", len(instance._chunks), path)
         return instance
 
-    def search(self, query: str, top_k: int = 20) -> list[SearchResult]:
+    def search(
+        self,
+        query: str,
+        top_k: int = 20,
+        filters: dict | None = None,
+    ) -> list[SearchResult]:
         """Perform BM25 keyword search.
 
         Args:
             query: Natural language query string.
             top_k: Number of results to return.
+            filters: Optional metadata filters (e.g. {"ticker": "AAPL"}).
 
         Returns:
             List of SearchResult objects ranked by BM25 score.
@@ -125,18 +131,29 @@ class BM25Index:
 
         tokenized_query = self._tokenize(query)
         scores = self._bm25.get_scores(tokenized_query)
-        top_indices = np.argsort(scores)[::-1][:top_k]
+
+        scored = list(enumerate(scores))
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        if filters:
+            scored = [
+                (idx, score) for idx, score in scored
+                if all(
+                    getattr(self._chunks[idx].metadata, k, None) == v
+                    for k, v in filters.items()
+                )
+            ]
 
         results: list[SearchResult] = []
-        for idx in top_indices:
-            if scores[idx] <= 0:
+        for idx, score in scored[:top_k]:
+            if score <= 0:
                 break
             chunk = self._chunks[idx]
             results.append(
                 SearchResult(
                     chunk_id=chunk.chunk_id,
                     content=chunk.content,
-                    score=float(scores[idx]),
+                    score=float(score),
                     metadata=chunk.metadata,
                     source="sparse",
                 )

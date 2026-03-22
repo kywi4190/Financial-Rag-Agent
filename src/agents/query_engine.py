@@ -7,6 +7,7 @@ confidence is below threshold, reformulates and re-retrieves.
 """
 
 import logging
+import re
 from typing import Any
 
 from llama_index.core import PromptTemplate
@@ -61,6 +62,42 @@ class FinancialQueryEngine:
         llm_model: OpenAI model identifier for generation.
         embedding_model: OpenAI model identifier for embeddings.
     """
+
+    _COMPANY_TICKERS: dict[str, str] = {
+        "apple": "AAPL",
+        "microsoft": "MSFT",
+        "alphabet": "GOOGL",
+        "google": "GOOGL",
+    }
+
+    _KNOWN_TICKERS: set[str] = {"AAPL", "MSFT", "GOOGL", "META", "AMZN", "NVDA", "TSLA"}
+
+    @staticmethod
+    def _extract_ticker(query: str) -> str | None:
+        """Extract a single ticker from a natural language query.
+
+        Returns None if the query mentions multiple companies (comparative)
+        or no recognizable company.
+        """
+        query_lower = query.lower()
+
+        # Check for direct ticker symbols (uppercase, 1-5 chars)
+        direct_tickers = re.findall(r'\b([A-Z]{1,5})\b', query)
+        found_tickers = [t for t in direct_tickers if t in FinancialQueryEngine._KNOWN_TICKERS]
+
+        # Check for company names
+        found_companies = [
+            ticker
+            for name, ticker in FinancialQueryEngine._COMPANY_TICKERS.items()
+            if name in query_lower
+        ]
+
+        all_found = list(set(found_tickers + found_companies))
+
+        # Only filter if exactly one company is mentioned
+        if len(all_found) == 1:
+            return all_found[0]
+        return None
 
     def __init__(
         self,
@@ -317,6 +354,12 @@ class FinancialQueryEngine:
             AnswerWithCitations with answer and source citations.
         """
         logger.info("Query received: %s", question[:80])
+
+        # Auto-extract ticker from query if not explicitly provided
+        if ticker is None:
+            ticker = self._extract_ticker(question)
+            if ticker:
+                logger.info("Auto-extracted ticker filter: %s", ticker)
 
         # Step 1: Initial retrieval
         context = self._retrieve_context(question, ticker=ticker)
