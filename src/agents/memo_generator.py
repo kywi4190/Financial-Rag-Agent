@@ -297,7 +297,7 @@ class MemoGenerator:
                     "period": r.get("period", f"FY{r['year']}"),
                 })
                 citations.append(Citation(
-                    source_document=f"{r['ticker']} {r['year']} 10-K",
+                    source_document=f"{r['ticker']} 10-K {r['year']}",
                     section="XBRL Data",
                     ticker=r["ticker"],
                     year=r["year"],

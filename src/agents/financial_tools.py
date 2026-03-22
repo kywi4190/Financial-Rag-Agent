@@ -244,7 +244,7 @@ def compare_metrics_tool(
                     unit=r.get("unit", "USD"),
                     period=r.get("period", f"FY{r['year']}"),
                     source=Citation(
-                        source_document=f"{r['ticker']} {r['year']} 10-K",
+                        source_document=f"{r['ticker']} 10-K {r['year']}",
                         section="XBRL Data",
                         ticker=r["ticker"],
                         year=r["year"],
@@ -300,7 +300,7 @@ def retrieve_context_tool(
     for r in results[:top_k]:
         meta = r.metadata
         citation = Citation(
-            source_document=f"{meta.ticker} {meta.year} {meta.filing_type}",
+            source_document=f"{meta.ticker} {meta.filing_type} {meta.year}",
             section=meta.section_name,
             ticker=meta.ticker,
             year=meta.year,
