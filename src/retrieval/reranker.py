@@ -2,10 +2,11 @@
 
 Uses a cross-encoder model from sentence-transformers to
 re-score and reorder search results for improved precision.
-Scores are normalized to [0, 1] via min-max scaling.
+Scores are normalized to [0, 1] via sigmoid transformation.
 """
 
 import logging
+import math
 
 from sentence_transformers import CrossEncoder
 
@@ -44,7 +45,7 @@ class Reranker:
 
         Returns:
             Reranked and truncated list of SearchResult objects
-            with scores normalized to [0, 1].
+            with scores normalized to [0, 1] via sigmoid.
         """
         if not results:
             return []
@@ -59,14 +60,10 @@ class Reranker:
             )
             return results[:top_k]
 
-        min_s = float(min(raw_scores))
-        max_s = float(max(raw_scores))
-        span = max_s - min_s
-
         reranked = [
             r.model_copy(
                 update={
-                    "score": (float(raw_scores[i]) - min_s) / span if span > 0 else 1.0,
+                    "score": 1.0 / (1.0 + math.exp(-float(raw_scores[i]))),
                     "source": "rerank",
                 }
             )

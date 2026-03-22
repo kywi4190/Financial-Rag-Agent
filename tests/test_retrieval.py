@@ -451,15 +451,12 @@ class TestHybridRetriever:
         mock_bm25 = MagicMock()
         mock_bm25.search.return_value = []
 
-        mock_reranker = MagicMock()
-        # Reranker returns item7 ranked higher (0.6 > 0.5)
-        mock_reranker.rerank.return_value = [item7_result, item8_result]
-
-        retriever = HybridRetriever(mock_vs, mock_bm25, reranker=mock_reranker)
-        # "balance sheet" → boosts Item 8
+        retriever = HybridRetriever(mock_vs, mock_bm25)
+        # "balance sheet" → boosts Item 8 before reranking
         results = retriever.search("balance sheet assets")
 
-        # Item 8 chunk should now rank first due to section boost (0.5 * 1.3 = 0.65 > 0.6)
+        # Item 8 chunk should now rank first due to section boost
+        # (RRF score boosted by 1.3x moves it above Item 7)
         assert results[0].chunk_id == "c1"
         assert results[0].score > results[1].score
 
@@ -526,6 +523,6 @@ class TestReranker:
         assert reranked[0].chunk_id == "c3"
         assert reranked[1].chunk_id == "c2"
         assert all(r.source == "rerank" for r in reranked)
-        # Normalized: c3 → 1.0, c2 → 0.625, c1 → 0.0
-        assert reranked[0].score == pytest.approx(1.0)
-        assert reranked[1].score == pytest.approx(0.625)
+        # Sigmoid-normalized: c3 → sigmoid(0.9) ≈ 0.7109, c2 → sigmoid(0.6) ≈ 0.6457
+        assert reranked[0].score == pytest.approx(0.7109, abs=1e-3)
+        assert reranked[1].score == pytest.approx(0.6457, abs=1e-3)

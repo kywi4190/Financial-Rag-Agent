@@ -180,22 +180,22 @@ class HybridRetriever:
             ]
             fused.sort(key=lambda r: r.score, reverse=True)
 
+        # Query-type section boosting
+        target_sections = self._detect_target_sections(query)
+        if target_sections:
+            fused = [
+                r.model_copy(update={"score": r.score * self._SECTION_BOOST})
+                if any(r.metadata.section_name.startswith(s) for s in target_sections)
+                else r
+                for r in fused
+            ]
+            fused.sort(key=lambda r: r.score, reverse=True)
+
         # Cross-encoder reranking
         if self._reranker is not None:
             results = self._reranker.rerank(query, fused, cfg.rerank_top_k)
         else:
             results = fused[: cfg.top_k]
-
-        # Query-type section boosting
-        target_sections = self._detect_target_sections(query)
-        if target_sections:
-            results = [
-                r.model_copy(update={"score": r.score * self._SECTION_BOOST})
-                if any(r.metadata.section_name.startswith(s) for s in target_sections)
-                else r
-                for r in results
-            ]
-            results.sort(key=lambda r: r.score, reverse=True)
 
         return results
 
