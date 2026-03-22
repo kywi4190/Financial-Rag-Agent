@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     chunk_size: int = 768
     chunk_overlap: int = 128
     top_k: int = 10
-    rerank_top_k: int = 5
+    rerank_top_k: int = 10
 
     model_config = {
         "env_file": ".env",

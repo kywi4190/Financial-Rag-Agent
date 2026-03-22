@@ -163,7 +163,7 @@ class HybridRetriever:
         expanded_query = self._expand_query(query)
 
         dense_results = self._vector_store.search(
-            expanded_query, top_k=cfg.top_k, filters=effective_filters
+            query, top_k=cfg.top_k, filters=effective_filters
         )
         sparse_results = self._bm25_index.search(expanded_query, top_k=cfg.top_k)
 

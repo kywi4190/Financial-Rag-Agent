@@ -41,7 +41,7 @@ class RetrievalConfig(BaseModel):
     """
 
     top_k: int = 20
-    rerank_top_k: int = 5
+    rerank_top_k: int = 10
     dense_weight: float = 0.7
     sparse_weight: float = 0.3
     filters: Optional[dict] = None
