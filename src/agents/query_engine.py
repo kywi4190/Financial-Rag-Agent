@@ -373,23 +373,41 @@ class FinancialQueryEngine:
         )
 
         prompt = (
-            f"Review this answer for faithfulness to the provided context. "
-            f"Score the grounding on a 0.0-1.0 scale. If any claims are NOT "
-            f"supported by the context, rewrite the answer to include only "
-            f"well-supported claims. Respond in this exact format:\n"
-            f"SCORE: <number>\n"
-            f"ANSWER: <revised or original answer>\n\n"
-            f"Context:\n{context_text}\n\n"
-            f"Answer to verify:\n{answer_text}"
+            "You are a fact-checking assistant. Your task is to verify that every claim "
+            "in the answer below is directly supported by the provided context.\n\n"
+            "Context from SEC filings:\n"
+            f"{context_text}\n\n"
+            "Answer to verify:\n"
+            f"{answer_text}\n\n"
+            "Instructions:\n"
+            "1. Check each factual claim in the answer against the context.\n"
+            "2. A claim is SUPPORTED if the context contains the same information.\n"
+            "3. A claim is UNSUPPORTED if the context does not contain that information.\n"
+            "4. Score the overall grounding from 0.0 to 1.0 (fraction of supported claims).\n"
+            "5. If any claims are unsupported, rewrite the answer including ONLY supported claims.\n\n"
+            "Respond in this EXACT format (two lines only):\n"
+            "SCORE: <decimal between 0.0 and 1.0>\n"
+            "ANSWER: <the verified answer text>"
         )
 
         try:
             response = self._llm.complete(prompt)
             text = response.text.strip()
-            score_line, answer_line = text.split("\n", 1)
-            score = float(score_line.replace("SCORE:", "").strip())
-            verified_answer = answer_line.replace("ANSWER:", "", 1).strip()
-            score = max(0.0, min(1.0, score))
+            # Extract score
+            score_match = re.search(r'SCORE:\s*([\d.]+)', text)
+            if score_match:
+                score = float(score_match.group(1))
+                score = max(0.0, min(1.0, score))
+            else:
+                score = 0.5
+
+            # Extract answer
+            answer_match = re.search(r'ANSWER:\s*(.+)', text, re.DOTALL)
+            if answer_match:
+                verified_answer = answer_match.group(1).strip()
+            else:
+                verified_answer = answer_text
+
             logger.info("Grounding verification score: %.2f", score)
             return verified_answer, score
         except Exception:
@@ -448,7 +466,7 @@ class FinancialQueryEngine:
             verified_answer, grounding_score = self._verify_grounding(
                 answer.answer, context,
             )
-            if grounding_score < 0.5:
+            if grounding_score < 0.4:
                 answer = AnswerWithCitations(
                     answer="I could not find sufficient information in the available "
                            "SEC filings to answer this question confidently.",
