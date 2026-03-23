@@ -29,7 +29,7 @@ Agentic RAG system that ingests SEC 10-K/10-Q filings, retrieves context via hyb
                   │  │  │Retrieve │→ │Evaluate    │ │
                   │  │  │Context  │  │Confidence  │ │
                   │  │  └─────────┘  └─────┬──────┘ │
-                  │  │       ↑   < 0.6?    │        │
+                  │  │       ↑   < 0.5?    │        │
                   │  │       └─Reformulate─┘        │
                   │  └──────────────────────────────┘
                   │  ┌──────────────────────────────┐
@@ -94,7 +94,7 @@ Agentic RAG system that ingests SEC 10-K/10-Q filings, retrieves context via hyb
 
 - **Hybrid retrieval** -- BM25 sparse + dense vector search fused via Reciprocal Rank Fusion, then reranked with a cross-encoder. Numerical queries automatically boost table/XBRL chunks.
 - **Structure-aware chunking** -- Respects section boundaries, preserves financial tables as atomic chunks, and injects metadata prefixes (ticker, year, section) for grounded retrieval.
-- **CRAG self-correction** -- Evaluates retrieval confidence; if below threshold (0.7), automatically reformulates the query and re-retrieves before generating. Includes post-generation grounding verification.
+- **CRAG self-correction** -- Evaluates retrieval confidence; if below threshold (0.5), automatically reformulates the query and re-retrieves, keeping whichever result scores higher. Includes post-generation grounding verification that flags unsupported claims.
 - **Multi-agent investment memos** -- Three specialized agents (Financial Data, Qualitative Analysis, Synthesis) produce structured memos with executive summary, risk factors, MD&A, and bull/bear cases.
 - **XBRL-powered numerical accuracy** -- Extracts structured financial facts from inline XBRL, stores in typed DataFrames, and routes numerical queries to XBRL lookup tools before falling back to narrative text.
 - **Citation tracking** -- Every generated claim carries a `Citation` object linking back to source document, section, ticker, year, and verbatim quote snippet.
@@ -104,12 +104,12 @@ Agentic RAG system that ingests SEC 10-K/10-Q filings, retrieves context via hyb
 
 | Metric | Score | Notes |
 |---|---|---|
-| Faithfulness | **0.71** | Improved from 0.60 via CRAG threshold increase (0.6→0.7) and post-generation grounding verification |
-| Context Precision | **0.42** | Decreased from 0.49 — cross-encoder reranker may be over-filtering relevant context; needs weight tuning |
-| Context Recall | **0.22** | Decreased from 0.35 — stricter CRAG threshold causes more query reformulations, reducing recall on initial retrieval |
-| Answer Relevancy | **0.21** | Now computed via LlamaIndex embedding adapter; low score driven by comparative/numerical categories returning 0.0 |
-| Citation Accuracy | **0.28** | Decreased from 0.54 — component-based matching is stricter than previous substring matching; needs calibration |
-| Numerical Accuracy | **0.47** | Decreased from 0.72 — retrieval pipeline changes affected numerical question routing; needs investigation |
+| Faithfulness | **0.64** | CRAG self-correction and grounding verification reduce hallucination; analytical queries (0.46) lag behind comparative (0.78) due to longer answer chains |
+| Context Precision | **0.40** | Cross-encoder reranker prioritizes relevant passages; analytical queries score well (0.86) but numerical (0.22) and comparative (0.18) suffer from sparse financial table context |
+| Context Recall | **0.26** | Analytical queries achieve strong recall (0.74); numerical (0.05) and comparative (0.07) categories limited by balance sheet and multi-year data spanning multiple chunks |
+| Answer Relevancy | **0.23** | Analytical queries score well (0.72); comparative queries return 0.0 due to multi-entity answers diverging from single-entity question embeddings |
+| Citation Accuracy | **0.70** | Flexible ground-truth-oriented matching with component scoring (ticker, year, section); numerical queries strongest (0.83) |
+| Numerical Accuracy | **0.34** | XBRL lookup handles direct fact retrieval; accuracy limited by derived metrics (margins, ratios) requiring multi-step calculation from raw XBRL data |
 
 > Evaluated on 50 curated questions (20 numerical, 15 comparative, 15 analytical) across AAPL, MSFT, and GOOGL 10-K filings (2022-2025).
 
@@ -122,7 +122,7 @@ Agentic RAG system that ingests SEC 10-K/10-Q filings, retrieves context via hyb
 | Embeddings | OpenAI `text-embedding-3-small` | Best cost/performance ratio at 1536 dims for financial text |
 | LLM | GPT-4o-mini | Fast structured output for agent tool calls and memo generation |
 | Sparse Search | rank-bm25 (Okapi BM25) | Captures exact keyword matches that embeddings miss (ticker symbols, XBRL concepts) |
-| Reranking | cross-encoder/ms-marco-MiniLM-L-6-v2 | Lightweight cross-encoder that fits in CPU memory, strong passage ranking |
+| Reranking | cross-encoder/ms-marco-MiniLM-L-12-v2 | Cross-encoder reranker that fits in CPU memory, strong passage ranking accuracy |
 | SEC Data | edgartools | Typed Python API for EDGAR with markdown/HTML export and XBRL support |
 | Tokenization | tiktoken (cl100k_base) | Exact token counting matching the OpenAI embedding model's tokenizer |
 | Data Models | Pydantic v2 | Strict type validation on all pipeline data, JSON serialization for eval |
@@ -141,7 +141,7 @@ SEC filings have strong structural signals -- Item headers, section boundaries, 
 
 ### CRAG Self-Correction Loop
 
-Retrieval-Augmented Generation fails silently when retrieved context is irrelevant -- the LLM hallucinates a plausible-sounding answer from noise. Corrective RAG (CRAG) adds a confidence evaluation step: after initial retrieval, the LLM scores context relevance on a 0-1 scale. If the score falls below 0.7, the system reformulates the query (making it more specific to SEC filing terminology) and re-retrieves before generating. This catches cases where a user's natural language doesn't match the formal language of filings -- e.g., "How much cash does Apple have?" reformulated to target "cash and cash equivalents" in Item 8 financial statements.
+Retrieval-Augmented Generation fails silently when retrieved context is irrelevant -- the LLM hallucinates a plausible-sounding answer from noise. Corrective RAG (CRAG) adds a confidence evaluation step: after initial retrieval, the LLM scores context relevance on a 0-1 scale. If the score falls below 0.5, the system reformulates the query (making it more specific to SEC filing terminology) and re-retrieves, keeping whichever result scores higher. A post-generation grounding verification step then checks whether the answer is actually supported by the retrieved context, flagging unsupported claims. This catches cases where a user's natural language doesn't match the formal language of filings -- e.g., "How much cash does Apple have?" reformulated to target "cash and cash equivalents" in Item 8 financial statements.
 
 ### Multi-Agent Memo Generation Over Single-Prompt
 
@@ -233,20 +233,17 @@ Financial-Rag-Agent/
 
 **Current limitations:**
 - XBRL extraction limited to inline `ix:nonfraction` tags; does not parse full XBRL instance documents
-- Reranker runs on CPU -- adds latency on the cross-encoder pass per query
+- Reranker runs on CPU -- adds ~2-5s latency on the cross-encoder pass per query
 - Evaluation requires ingested data and API calls -- no offline/cached mode
+- Numerical and comparative queries have near-zero context recall (0.05 and 0.07), indicating retrieval struggles with balance sheet lookups and multi-entity comparisons
+- Comparative answer relevancy scores 0.0 due to multi-entity answers diverging from single-entity question embeddings in the similarity metric
 
 **Evaluation-informed improvements** (scores below 0.7):
-- **Context Recall (0.22):** Retrieval depth increased to top-10 and financial synonym query expansion added, but recall decreased — further work needed on metadata filtering to better match fiscal year queries to filing dates, and on expanding ground-truth context coverage
-- **Context Precision (0.42):** Cross-encoder reranker and query-type section boosting integrated, but precision decreased — reranker score thresholds and RRF weight tuning needed to avoid over-filtering relevant context
-- **Citation Accuracy (0.28):** Component-based matching and citation metadata enrichment implemented, but stricter matching lowered scores — needs calibration of matching thresholds and fallback to partial matching for edge cases
-- **Answer Relevancy (0.21):** LlamaIndex embedding adapter now enables computation; low scores driven by comparative and numerical categories (0.0) — needs query-specific prompt templates to improve answer format alignment
-- **Numerical Accuracy (0.47):** Decreased from 0.72 after retrieval pipeline changes — numerical query routing and XBRL lookup need investigation to ensure table/XBRL chunks are prioritized correctly
-
-**Phase 2 resolved items:**
-- ~~BM25 index rebuilt on each startup~~ — BM25 persistence (save/load) implemented
-- ~~RAGAS answer_relevancy incompatible with LlamaIndex embeddings~~ — fixed with LlamaIndex embedding adapter
-- ~~Faithfulness below 0.7~~ — improved to 0.71 via CRAG threshold increase and post-generation grounding verification
+- **Context Recall (0.26):** Analytical queries achieve 0.74 recall, but numerical (0.05) and comparative (0.07) categories fail to retrieve the right chunks — metadata filtering needs to better match fiscal year queries to filing dates, and financial tables need to be chunked at the statement level rather than row level
+- **Context Precision (0.40):** Analytical queries score 0.86, showing the cross-encoder reranker works well for narrative text — numerical and comparative queries need section-aware boosting tuned specifically for financial statement chunks
+- **Faithfulness (0.64):** Comparative queries score 0.78 but analytical queries drop to 0.46 — longer analytical answers accumulate more ungrounded claims; tighter grounding verification or per-claim citation enforcement could help
+- **Answer Relevancy (0.23):** Comparative category returns 0.0 because the embedding similarity metric penalizes multi-entity answers — needs a domain-specific relevancy metric or query-type-aware evaluation
+- **Numerical Accuracy (0.34):** Direct XBRL fact lookups work but derived metrics (margins, ratios, YoY changes) require multi-step calculation that the current single-tool pipeline doesn't support — needs a computation chain that extracts components then calculates
 
 **Planned improvements:**
 - Full XBRL instance document parsing for broader fact coverage
@@ -254,10 +251,10 @@ Financial-Rag-Agent/
 - Streaming LLM responses in the Streamlit chat interface
 - Multi-filing temporal analysis (auto-compare across fiscal years)
 - GPU-accelerated reranking for production latency targets
-- Query-specific prompt templates (different prompts for numerical vs analytical vs comparative queries)
-- Chunk-level relevance feedback loop (use evaluation results to fine-tune retrieval weights)
-- Multi-hop reasoning for complex comparative questions
-- Evaluation caching for faster iteration (cache LLM responses for unchanged questions)
+- Multi-hop reasoning for complex comparative questions requiring data from multiple filings
+- Computation chain for derived financial metrics (extract XBRL components, then calculate ratios/margins)
+- Statement-level table chunking to keep full balance sheets and income statements intact
+- Domain-specific evaluation metrics that handle multi-entity comparative answers
 
 ---
 
