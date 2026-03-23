@@ -486,8 +486,8 @@ class TestHybridRetriever:
         mock_bm25.search.return_value = sparse_results
 
         retriever = HybridRetriever(mock_vs, mock_bm25)
-        # "what was the" + "revenue" + "2024" → ≥2 numerical signals → boost
-        results = retriever.search("what was the revenue in 2024")
+        # "how much" (strong=2) + "revenue" (weak=1) → score 3 → boost
+        results = retriever.search("How much revenue did they earn in 2024")
 
         assert len(results) == 2
         # Table chunk (c2) should be boosted to rank 1

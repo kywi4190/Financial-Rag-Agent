@@ -17,33 +17,34 @@ from src.retrieval.vector_store import ChromaStore
 
 logger = logging.getLogger(__name__)
 
-_NUMERICAL_PATTERNS = [
-    r"\d+",
-    r"how much",
-    r"how many",
-    r"what was the",
-    r"what is the",
-    r"revenue",
-    r"earnings",
-    r"income",
-    r"profit",
-    r"ebitda",
-    r"eps",
-    r"margin",
-    r"ratio",
-    r"debt",
-    r"assets",
-    r"liabilities",
-    r"cash flow",
-    r"growth",
-    r"compare",
-    r"year over year",
-    r"yoy",
-    r"\$",
-    r"%",
+# Strong numerical signals — each counts as 2 points
+_STRONG_NUMERICAL = [
+    r"\d+\.?\d*\s*(?:billion|million|trillion|thousand)",
+    r"\$\s*\d+",
+    r"\d+\.?\d*\s*%",
+    r"\bhow much\b",
+    r"\bhow many\b",
 ]
 
-_NUMERICAL_RE = re.compile("|".join(_NUMERICAL_PATTERNS), re.IGNORECASE)
+# Weak numerical signals — each counts as 1 point
+_WEAK_NUMERICAL = [
+    r"\brevenue\b",
+    r"\bearnings\b",
+    r"\bincome\b",
+    r"\bprofit\b",
+    r"\bebitda\b",
+    r"\beps\b",
+    r"\bmargin\b",
+    r"\bratio\b",
+    r"\bdebt\b",
+    r"\bassets\b",
+    r"\bliabilities\b",
+    r"\bcash flow\b",
+]
+
+_STRONG_RE = re.compile("|".join(_STRONG_NUMERICAL), re.IGNORECASE)
+_WEAK_RE = re.compile("|".join(_WEAK_NUMERICAL), re.IGNORECASE)
+_NUMERICAL_THRESHOLD = 3  # Weighted score must reach this
 _TABLE_BOOST = 1.5
 
 
@@ -139,9 +140,11 @@ class HybridRetriever:
     def _is_numerical_query(query: str) -> bool:
         """Detect whether a query is numerical/quantitative.
 
-        Returns True when two or more numerical signal patterns match.
+        Uses weighted scoring: strong signals count 2, weak signals count 1.
+        Returns True when total score >= _NUMERICAL_THRESHOLD.
         """
-        return len(_NUMERICAL_RE.findall(query)) >= 2
+        score = len(_STRONG_RE.findall(query)) * 2 + len(_WEAK_RE.findall(query))
+        return score >= _NUMERICAL_THRESHOLD
 
     def search(
         self,
