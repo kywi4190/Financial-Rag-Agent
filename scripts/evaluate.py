@@ -13,12 +13,15 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pandas as pd
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
+from src.agents.financial_tools import register_xbrl_data
 from src.agents.query_engine import FinancialQueryEngine
 from src.chunking.models import ChunkMetadata, DocumentChunk
 from src.evaluation.models import EvalReport
@@ -208,6 +211,43 @@ def main() -> None:
         reranker = Reranker()
         retriever = HybridRetriever(vector_store, bm25, RetrievalConfig(), reranker=reranker)
         query_engine = FinancialQueryEngine(retriever=retriever)
+
+        # Load XBRL data from ingested filing JSONs
+        data_dir = Path("data")
+        xbrl_loaded = 0
+        for ticker_dir in data_dir.iterdir():
+            if not ticker_dir.is_dir() or ticker_dir.name in ("eval", ".chroma", ".bm25"):
+                continue
+            for json_file in ticker_dir.glob("*.json"):
+                try:
+                    filing_data = json.loads(json_file.read_text(encoding="utf-8"))
+                    xbrl_facts = filing_data.get("xbrl_facts", [])
+                    if not xbrl_facts:
+                        continue
+                    ticker = filing_data.get("metadata", {}).get("ticker", ticker_dir.name)
+                    # Extract fiscal year from metadata or filename
+                    fiscal_year_end = filing_data.get("metadata", {}).get("fiscal_year_end")
+                    if fiscal_year_end:
+                        year = int(fiscal_year_end[:4])
+                    else:
+                        parts = json_file.stem.split("_")
+                        if len(parts) >= 3:
+                            try:
+                                year = int(parts[-1])
+                            except ValueError:
+                                continue
+                        else:
+                            continue
+                    df = pd.DataFrame(xbrl_facts)
+                    for col in ("concept", "value", "unit", "period"):
+                        if col not in df.columns:
+                            df[col] = "" if col != "value" else 0
+                    register_xbrl_data(str(ticker).upper(), year, df)
+                    xbrl_loaded += 1
+                except Exception:
+                    logger.warning("Failed to load XBRL from %s", json_file)
+        logger.info("Loaded XBRL data from %d filing files", xbrl_loaded)
+
     except Exception:
         logger.exception("Failed to initialize query engine")
         sys.exit(1)
