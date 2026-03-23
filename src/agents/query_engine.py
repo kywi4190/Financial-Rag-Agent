@@ -40,7 +40,7 @@ Rules:
 - For numerical questions, prefer XBRL data when available over narrative text.
 """
 
-CRAG_CONFIDENCE_THRESHOLD = 0.7
+CRAG_CONFIDENCE_THRESHOLD = 0.5
 
 REFORMULATION_TEMPLATE = PromptTemplate(
     "The following query did not retrieve sufficiently relevant context:\n"
@@ -215,7 +215,7 @@ class FinancialQueryEngine:
             return 0.0
 
         context_text = "\n\n".join(
-            c["content"][:800] for c in context_chunks[:5]
+            c["content"][:2000] for c in context_chunks[:5]
         )
 
         prompt = (
@@ -369,7 +369,7 @@ class FinancialQueryEngine:
             If grounding is poor, returns a revised answer with only supported claims.
         """
         context_text = "\n\n".join(
-            c["content"][:1000] for c in context_chunks[:5]
+            c["content"][:2000] for c in context_chunks[:5]
         )
 
         prompt = (
@@ -430,8 +430,15 @@ class FinancialQueryEngine:
                 "Low confidence (%.2f), reformulating query...", confidence
             )
             reformulated = self._reformulate_query(question)
-            context = self._retrieve_context(reformulated, ticker=ticker)
-            confidence = self._evaluate_context_relevance(reformulated, context)
+            new_context = self._retrieve_context(reformulated, ticker=ticker)
+            new_confidence = self._evaluate_context_relevance(reformulated, new_context)
+            # Keep whichever retrieval scored higher
+            if new_confidence > confidence:
+                logger.info("Using reformulated results (%.2f > %.2f)", new_confidence, confidence)
+                context = new_context
+                confidence = new_confidence
+            else:
+                logger.info("Keeping original results (%.2f >= %.2f)", confidence, new_confidence)
 
         # Step 4: Generate answer
         answer = self._generate_answer(question, context)

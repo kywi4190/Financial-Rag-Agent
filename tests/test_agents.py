@@ -378,7 +378,7 @@ class TestFinancialQueryEngine:
         mock_settings: MagicMock,
         mock_retriever: MagicMock,
     ) -> None:
-        """Test CRAG reformulates query when confidence < 0.7."""
+        """Test CRAG reformulates query when confidence < 0.5."""
         mock_settings.return_value.llm_model = "gpt-4o"
         mock_settings.return_value.embedding_model = "text-embedding-3-large"
 
@@ -391,7 +391,7 @@ class TestFinancialQueryEngine:
         engine._llm = mock_llm
 
         mock_llm.complete.side_effect = [
-            MagicMock(text="0.65"),  # below 0.7 -> triggers reformulation
+            MagicMock(text="0.45"),  # below 0.5 -> triggers reformulation
             MagicMock(text="What was Apple Inc total revenue for fiscal year 2024?"),  # reformulation
             MagicMock(text="0.8"),  # second relevance eval
             MagicMock(text="Revenue was $383.3 billion."),  # final answer
