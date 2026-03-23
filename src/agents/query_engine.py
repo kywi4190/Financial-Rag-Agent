@@ -73,6 +73,38 @@ class FinancialQueryEngine:
     _KNOWN_TICKERS: set[str] = {"AAPL", "MSFT", "GOOGL", "META", "AMZN", "NVDA", "TSLA"}
 
     @staticmethod
+    def _detect_query_type(query: str) -> str:
+        """Classify a query as numerical, comparative, or analytical."""
+        query_lower = query.lower()
+
+        # Comparative signals
+        comparative_patterns = [
+            r"\bcompare\b", r"\bcompar", r"\bvs\.?\b", r"\bversus\b",
+            r"\bdifference between\b", r"\bhow did .+ change\b",
+            r"\bhow did .+ compare\b", r"\bfrom .+ to\b",
+            r"\bgrew|growth|increased|decreased\b",
+        ]
+        comparative_count = sum(
+            1 for p in comparative_patterns if re.search(p, query_lower)
+        )
+        if comparative_count >= 1:
+            return "comparative"
+
+        # Numerical signals
+        numerical_patterns = [
+            r"\bhow much\b", r"\bhow many\b", r"\bwhat was\b", r"\bwhat is\b",
+            r"\bwhat were\b", r"\$", r"\d+", r"\beps\b", r"\brevenue\b",
+            r"\bincome\b", r"\bmargin\b", r"\bratio\b",
+        ]
+        numerical_count = sum(
+            1 for p in numerical_patterns if re.search(p, query_lower)
+        )
+        if numerical_count >= 2:
+            return "numerical"
+
+        return "analytical"
+
+    @staticmethod
     def _extract_ticker(query: str) -> str | None:
         """Extract a single ticker from a natural language query.
 
@@ -267,6 +299,29 @@ class FinancialQueryEngine:
             f"stated in the context.\n"
             f"- Every numerical claim must reference the specific source."
         )
+
+        query_type = self._detect_query_type(query)
+
+        if query_type == "numerical":
+            prompt += (
+                "\n\nFORMAT INSTRUCTION: This is a numerical question. "
+                "Lead with the specific number in your first sentence. "
+                "State the exact figure with its unit (e.g., '$391.0 billion'). "
+                "Keep the answer concise — 1-3 sentences maximum."
+            )
+        elif query_type == "comparative":
+            prompt += (
+                "\n\nFORMAT INSTRUCTION: This is a comparative question. "
+                "Present each entity's value clearly, then state the difference or trend. "
+                "Use a direct comparison format: 'X was $A while Y was $B, a difference of $C.' "
+                "Include percentage changes where relevant. Keep the answer focused and structured."
+            )
+        else:  # analytical
+            prompt += (
+                "\n\nFORMAT INSTRUCTION: This is an analytical question. "
+                "Provide a thorough but focused answer. Organize key points clearly. "
+                "Cite specific sections for each major claim."
+            )
 
         try:
             response = self._llm.complete(prompt)
