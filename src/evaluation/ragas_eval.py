@@ -328,16 +328,22 @@ class RAGASEvaluator:
         question: EvalQuestion,
         result: QuestionResult,
     ) -> float:
-        """Compute what fraction of retrieved contexts match ground truth sections.
+        """Compute how well retrieved contexts cover the ground truth sections.
+
+        For each ground truth context, finds the best matching retrieved context
+        and averages across ground truths. This avoids penalizing extra retrieved
+        contexts that don't match any ground truth.
 
         Uses component-based matching when the ground truth format is parseable,
         falling back to substring matching otherwise.
 
-        Scoring per retrieved context (best match across ground truths):
+        Scoring per ground truth (best match across retrieved contexts):
         - ticker + section + year all match → 1.0
-        - section + year match (wrong/missing ticker) → 0.5
-        - section only matches → 0.25
-        - no section match → 0.0
+        - section + year match → 0.7
+        - section + ticker match → 0.6
+        - section only matches → 0.4
+        - ticker + year match (no section) → 0.3
+        - no match → 0.0
 
         Args:
             question: Question with ground truth context sections.
@@ -346,7 +352,7 @@ class RAGASEvaluator:
         Returns:
             Score between 0.0 and 1.0.
         """
-        if not result.retrieved_contexts:
+        if not result.retrieved_contexts or not question.ground_truth_contexts:
             return 0.0
 
         parsed_gts = [
@@ -354,18 +360,18 @@ class RAGASEvaluator:
             for gt in question.ground_truth_contexts
         ]
 
-        total_score = 0.0
-        for ctx in result.retrieved_contexts:
-            ctx_lower = ctx.lower()
+        # For each ground truth, find the best matching retrieved context
+        gt_scores = []
+        for gt_raw, parsed in zip(question.ground_truth_contexts, parsed_gts):
             best_score = 0.0
 
-            for gt_raw, parsed in zip(question.ground_truth_contexts, parsed_gts):
+            for ctx in result.retrieved_contexts:
+                ctx_lower = ctx.lower()
+
                 if parsed is not None:
-                    # Component-based matching
                     section_match = parsed["section"].lower() in ctx_lower
                     year_match = parsed["year"] in ctx
                     ticker = parsed["ticker"]
-                    # Word boundary or bracket format match
                     ticker_match = bool(
                         re.search(
                             rf"(?<![A-Za-z]){re.escape(ticker)}(?![A-Za-z])",
@@ -377,27 +383,31 @@ class RAGASEvaluator:
                     if section_match and year_match and ticker_match:
                         score = 1.0
                     elif section_match and year_match:
-                        score = 0.5
+                        score = 0.7
+                    elif section_match and ticker_match:
+                        score = 0.6
                     elif section_match:
-                        score = 0.25
+                        score = 0.4
+                    elif ticker_match and year_match:
+                        score = 0.3
                     else:
                         score = 0.0
                 else:
-                    # Fallback: original substring matching
+                    # Fallback: substring matching
                     if gt_raw.lower() in ctx_lower:
                         score = 1.0
                     else:
                         section_parts = gt_raw.split(", ")
                         if len(section_parts) >= 2 and section_parts[-1].lower() in ctx_lower:
-                            score = 1.0
+                            score = 0.8
                         else:
                             score = 0.0
 
                 best_score = max(best_score, score)
 
-            total_score += best_score
+            gt_scores.append(best_score)
 
-        return total_score / len(result.retrieved_contexts)
+        return sum(gt_scores) / len(gt_scores)
 
     @staticmethod
     def _compute_numerical_accuracy(

@@ -374,7 +374,7 @@ class TestCitationAccuracy:
         assert score == 1.0
 
     def test_section_and_year_match_wrong_ticker(self) -> None:
-        """Section + year match but wrong ticker → 0.5."""
+        """Section + year match but wrong ticker → 0.7."""
         q = EvalQuestion(
             question="q",
             ground_truth_answer="a",
@@ -389,10 +389,10 @@ class TestCitationAccuracy:
             ],
         )
         score = RAGASEvaluator._compute_citation_accuracy(q, r)
-        assert score == 0.5
+        assert score == pytest.approx(0.7)
 
     def test_section_only_match(self) -> None:
-        """Only section matches (no year, no ticker) → 0.25."""
+        """Only section matches (no year, no ticker) → 0.4."""
         q = EvalQuestion(
             question="q",
             ground_truth_answer="a",
@@ -407,7 +407,7 @@ class TestCitationAccuracy:
             ],
         )
         score = RAGASEvaluator._compute_citation_accuracy(q, r)
-        assert score == 0.25
+        assert score == pytest.approx(0.4)
 
     def test_no_match(self) -> None:
         """No component matches → 0.0."""
@@ -457,7 +457,7 @@ class TestCitationAccuracy:
         assert score == 1.0
 
     def test_mixed_scores(self) -> None:
-        """Multiple contexts with different match levels are averaged."""
+        """Ground-truth-oriented: best context match per GT, averaged across GTs."""
         q = EvalQuestion(
             question="q",
             ground_truth_answer="a",
@@ -472,8 +472,9 @@ class TestCitationAccuracy:
                 "Item 1A. Risk Factors: Unrelated risk...",  # no match → 0.0
             ],
         )
+        # Only 1 ground truth; best match across contexts is 1.0
         score = RAGASEvaluator._compute_citation_accuracy(q, r)
-        assert score == pytest.approx(0.5)
+        assert score == pytest.approx(1.0)
 
     def test_fallback_substring_match(self) -> None:
         """Unparseable ground truth falls back to substring matching."""
