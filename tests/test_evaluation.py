@@ -701,11 +701,7 @@ class TestRAGASEvaluator:
         answer.answer = "Revenue was $391.0 billion."
         answer.citations = []
         answer.confidence = 0.9
-        engine.query.return_value = answer
-
-        # Mock retriever that returns contexts with citation metadata
-        engine._retriever = MagicMock()
-        engine._retrieve_context.return_value = [
+        answer.contexts_used = [
             {
                 "content": "[Ticker: AAPL] [Year: 2024] Item 8. Financial Statements: Revenue was $391B.",
                 "citation": {
@@ -719,6 +715,7 @@ class TestRAGASEvaluator:
                 "chunk_id": "chunk-001",
             },
         ]
+        engine.query.return_value = answer
 
         evaluator = RAGASEvaluator()
         report = evaluator.evaluate(sample_questions[:1], engine)

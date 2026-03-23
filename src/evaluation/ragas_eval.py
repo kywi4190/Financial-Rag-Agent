@@ -157,20 +157,14 @@ class RAGASEvaluator:
                 scores={},
             )
 
-        # Collect retrieved contexts
+        # Use the actual contexts from the query, not a separate retrieval
         contexts: list[str] = []
-        if query_engine._retriever is not None:
-            try:
-                raw_contexts = query_engine._retrieve_context(question.question)
-                contexts = [
-                    f"{c['citation']['source_document']}, {c['citation']['section']}: {c['content']}"
-                    for c in raw_contexts
-                ]
-            except Exception:
-                logger.warning("Context retrieval failed, using citation snippets")
-
-        # Fall back to citation snippets if no full contexts
-        if not contexts and answer.citations:
+        if answer.contexts_used:
+            contexts = [
+                f"{c['citation']['source_document']}, {c['citation']['section']}: {c['content']}"
+                for c in answer.contexts_used
+            ]
+        elif answer.citations:
             contexts = [
                 f"{c.source_document}, {c.section}: {c.quote_snippet}"
                 for c in answer.citations

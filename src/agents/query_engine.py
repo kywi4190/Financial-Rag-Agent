@@ -287,7 +287,7 @@ class FinancialQueryEngine:
             if "citation" in c
         ]
 
-        return AnswerWithCitations(
+        answer_obj = AnswerWithCitations(
             answer=answer_text,
             citations=citations,
             confidence=min(
@@ -295,6 +295,8 @@ class FinancialQueryEngine:
                 sum(c.get("score", 0.5) for c in context_chunks) / len(context_chunks),
             ),
         )
+        answer_obj.contexts_used = context_chunks
+        return answer_obj
 
     def _verify_grounding(
         self,
@@ -390,6 +392,7 @@ class FinancialQueryEngine:
                            "SEC filings to answer this question confidently.",
                     citations=[],
                     confidence=0.0,
+                    contexts_used=context,
                 )
             else:
                 answer.answer = verified_answer

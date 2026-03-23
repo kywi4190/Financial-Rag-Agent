@@ -41,6 +41,7 @@ class AnswerWithCitations(BaseModel):
     answer: str
     citations: list[Citation] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
+    contexts_used: list[dict] = Field(default_factory=list)
 
 
 class FinancialMetric(BaseModel):
